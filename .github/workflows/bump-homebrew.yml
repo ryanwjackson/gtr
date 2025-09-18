@@ -60,6 +60,43 @@ jobs:
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256"   >> "$GITHUB_OUTPUT"
 
+      - name: Rebuild tarball with injected version & upload asset
+        id: pack
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+
+          # Unpack original source
+          rm -rf src
+          mkdir -p src
+          tar -xzf source.tar.gz -C src --strip-components=1
+
+          # Inject version into script
+          if command -v gsed >/dev/null 2>&1; then
+            gsed -i 's/@VERSION@/'"$TAG"'/g' src/bin/gtr
+          else
+            sed -i '' 's/@VERSION@/'"$TAG"'/g' src/bin/gtr
+          fi
+
+          # Repack
+          TAR="gtr-${TAG}.tar.gz"
+          tar -czf "$TAR" -C src .
+
+          # Compute SHA256
+          SHA256="$(shasum -a 256 "$TAR" | awk '{print $1}')"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "asset=$TAR" >> "$GITHUB_OUTPUT"
+
+          # Upload asset to the release
+          gh release upload "$TAG" "$TAR" --clobber
+
+          # Get asset URL (browser download URL)
+          ASSET_URL="$(gh release view "$TAG" --json assets -q '.assets[] | select(.name=="'"$TAR"'") | .url')"
+          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+
       - name: Clone tap and bump formula
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
@@ -81,8 +118,8 @@ jobs:
           git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
 
           # In-place edit with Perl (portable across BSD/GNU)
-          NEW_URL="${{ steps.meta.outputs.tarball }}"
-          NEW_SHA="${{ steps.meta.outputs.sha256 }}"
+          NEW_URL="${{ steps.pack.outputs.asset_url }}"
+          NEW_SHA="${{ steps.pack.outputs.sha256 }}"
           URL="$NEW_URL" SHA="$NEW_SHA" perl -0777 -i -pe 's|^  url ".*"|  url "$ENV{URL}"|m; s|^  sha256 ".*"|  sha256 "$ENV{SHA}"|m' "$FORMULA_PATH"
 
           echo "Diff:"

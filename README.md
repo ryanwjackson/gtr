@@ -120,3 +120,7 @@ INI-like sections in your main repository:
 
 ### License
 MIT
+
+### Versioning
+- `gtr --version` (or `-v`) prints the installed release tag as `gtr version <tag>`.
+- The version is injected at build time for Homebrew releases. Running from a Git checkout (no CI replacement) prints `gtr version unknown`.

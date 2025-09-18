@@ -3,7 +3,6 @@
 # gtr - Git worktree helper
 # ref: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
 #
-#
 # Examples
 # --------
 #   gtr create feature0          # add ~/code/worktrees/feature0 (based on current branch)
@@ -18,6 +17,18 @@
 #   gtr doctor feature0 --fix    # check and fix missing local files
 #
 # ------------------------------------------------------------
+
+# Default version string placeholder; replaced during release packaging
+GTR_VERSION="@VERSION@"
+
+# Version output helper for CLI
+_gtr_print_version() {
+  if [[ "$GTR_VERSION" == "@VERSION@" || -z "$GTR_VERSION" ]]; then
+    echo "gtr version unknown"
+  else
+    echo "gtr version $GTR_VERSION"
+  fi
+}
 
 # Private helper functions (prefixed with _gtr_)
 _gtr_get_base_dir() {
@@ -1532,6 +1543,7 @@ COMMANDS:
     doctor [name]                 Check worktree for missing local files
     init                          Initialize gtr configuration
     --help, -h                    Show this help message
+    --version, -v                 Show version
 
 GLOBAL OPTIONS:
     --prefix <PREFIX>             Set branch prefix (default: claude)
@@ -1585,9 +1597,17 @@ For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-
 EOF
 }
 
+ 
+
 # Main gtr function - dispatches to appropriate sub-commands
 gtr() {
   local cmd="$1"
+  
+  # Handle version/help flags before parsing other arguments
+  if [[ "$cmd" == "--version" || "$cmd" == "-v" ]]; then
+    _gtr_print_version
+    return 0
+  fi
   
   # Handle help flag before parsing other arguments
   if [[ "$cmd" == "--help" || "$cmd" == "-h" ]]; then
@@ -1663,3 +1683,8 @@ gtr() {
       echo "Unknown sub-command: $cmd (use create, rm, cd, claude, prune, doctor, init)"; return 1;;
   esac
 }
+
+# If this file is executed directly (not sourced), run the dispatcher
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  gtr "$@"
+fi
