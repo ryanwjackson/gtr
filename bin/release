@@ -284,12 +284,6 @@ if [[ "$is_worktree" == "true" && "$current_branch" != "HEAD" && "$current_branc
   echo "Detected worktree release from branch $current_branch (not $main_branch)"
   echo "Creating PR to merge $current_branch into $main_branch with auto-merge enabled"
   
-  # Verify that the tag will be accessible from main after merge
-  if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" "$main_branch" 2>/dev/null; then
-    echo "⚠️  Warning: Current commit is not an ancestor of $main_branch"
-    echo "   This may cause issues if the PR is not merged as a fast-forward"
-  fi
-  
   # Create PR title and body
   pr_title="Release $tag from worktree"
   pr_body="This PR merges the release $tag from worktree branch \`$current_branch\` into \`$main_branch\`.
@@ -302,7 +296,7 @@ if [[ "$is_worktree" == "true" && "$current_branch" != "HEAD" && "$current_branc
 This PR is set to auto-merge once CI passes."
   
   # Create the PR
-  if gh pr create --title "$pr_title" --body "$pr_body" --base "$main_branch" --head "$current_branch" --label "release" 2>/dev/null; then
+  if gh pr create --title "$pr_title" --body "$pr_body" --base "$main_branch" --head "$current_branch" 2>/dev/null; then
     echo "✅ PR created successfully"
     
     # Enable auto-merge on the PR
