@@ -96,13 +96,34 @@ _gtr_ask_user() {
   fi
 }
 
+# Helper function for getting repository name
+# Usage: _gtr_get_repo_name
+# Returns: repository name from git remote or directory name
+_gtr_get_repo_name() {
+  # Try to get repo name from git remote origin
+  local repo_name=$(git remote get-url origin 2>/dev/null | sed 's/.*\///' | sed 's/\.git$//')
+  
+  # If that fails, use the directory name
+  if [[ -z "$repo_name" ]]; then
+    repo_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+  fi
+  
+  # Fallback to a default if still empty
+  if [[ -z "$repo_name" ]]; then
+    repo_name="unknown-repo"
+  fi
+  
+  echo "$repo_name"
+}
+
 # Helper function for generating worktree branch names
 # Usage: _gtr_get_worktree_branch_name "worktree_name"
-# Returns: worktrees/username/worktree_name
+# Returns: worktrees/$repo_name/$username/$worktree_name
 _gtr_get_worktree_branch_name() {
   local worktree_name="$1"
   local username="${_GTR_USERNAME:-$(whoami)}"
-  echo "worktrees/$username/$worktree_name"
+  local repo_name="$(_gtr_get_repo_name)"
+  echo "worktrees/$repo_name/$username/$worktree_name"
 }
 
 _gtr_read_config() {
@@ -323,8 +344,6 @@ _gtr_generate_default_config() {
 # Default editor to open worktrees
 editor=cursor
 
-# Default branch prefix for worktrees
-prefix=claude
 
 # Whether to run pnpm commands by default
 run_pnpm=true
@@ -401,7 +420,6 @@ _gtr_repair_config() {
     echo ""
     echo "[settings]"
     echo "editor=cursor"
-    echo "prefix=claude"
     echo "run_pnpm=true"
     echo "auto_open=true"
     echo ""
@@ -644,7 +662,6 @@ _gtr_is_initialized() {
 
 _gtr_parse_global_flags() {
   local main_worktree="$(_gtr_get_main_worktree)"
-  local prefix="claude"
   local editor="cursor"
   local no_open=false
   local no_install=false
@@ -654,14 +671,12 @@ _gtr_parse_global_flags() {
   
   
   # Read default values from config
-  local config_prefix="$(_gtr_read_config_setting "$main_worktree" "settings" "prefix" "claude")"
   local config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
   local config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
   local config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
   local config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
   
   # Set defaults from config
-  prefix="$config_prefix"
   editor="$config_editor"
   
   # Set worktree base if configured
@@ -677,15 +692,6 @@ _gtr_parse_global_flags() {
   
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --prefix)
-        if [[ -n "$2" ]]; then
-          prefix="$2"
-          shift 2
-        else
-          echo "Error: --prefix requires a value"
-          return 1
-        fi
-        ;;
       --editor)
         if [[ -n "$2" ]]; then
           editor="$2"
@@ -739,7 +745,6 @@ _gtr_parse_global_flags() {
   
   
   # Export variables for use in other functions
-  export _GTR_PREFIX="$prefix"
   export _GTR_EDITOR="$editor"
   export _GTR_NO_OPEN="$no_open"
   export _GTR_NO_INSTALL="$no_install"
@@ -1441,8 +1446,6 @@ _gtr_create_default_config() {
 # Default editor to open worktrees
 editor=cursor
 
-# Default branch prefix for worktrees
-prefix=claude
 
 # Whether to run pnpm commands by default
 run_pnpm=true
@@ -1673,7 +1676,6 @@ gtr_doctor() {
   fi
   local fix_mode="${_GTR_FIX_MODE:-false}"
   local force_mode="${_GTR_FORCE_MODE:-false}"
-  local prefix="${_GTR_PREFIX:-claude}"
   local username="${_GTR_USERNAME:-$(whoami)}"
   local current_dir="$(pwd)"
   
@@ -1730,7 +1732,7 @@ gtr_doctor() {
     fi
   elif [[ "$is_worktree" == "false" ]]; then
     # Running from main repo without specifying worktree name
-    echo "Usage: gtr doctor [WORKTREE_NAME] [--fix] [--prefix PREFIX] [--username USERNAME]"
+    echo "Usage: gtr doctor [WORKTREE_NAME] [--fix] [--username USERNAME]"
     echo "  WORKTREE_NAME: Name of the worktree to check"
     echo "  When run from main repo, WORKTREE_NAME is required"
     return 1
@@ -1809,10 +1811,10 @@ gtr_doctor() {
     echo ""
     echo "💡 To fix files, run:"
     if [[ ${#different_files[@]} -gt 0 ]]; then
-      echo "   gtr doctor $worktree_name --fix --prefix $prefix --username $username"
+      echo "   gtr doctor $worktree_name --fix --username $username"
       echo "   (Use --force to skip interactive prompts for different files)"
     else
-      echo "   gtr doctor $worktree_name --fix --prefix $prefix --username $username"
+      echo "   gtr doctor $worktree_name --fix --username $username"
     fi
   fi
 }
@@ -1837,7 +1839,6 @@ COMMANDS:
     --version, -v                 Show version
 
 GLOBAL OPTIONS:
-    --prefix <PREFIX>             Set branch prefix (default: claude)
     --username <USERNAME>         Set username for branch naming (default: current user)
     --editor <EDITOR>             Set editor to open worktrees (default: cursor)
     --no-open                     Don't open editor after creating worktree
@@ -1880,7 +1881,7 @@ FEATURES:
     • Automatic copying of .env*local* files to new worktrees (recursive search)
     • Automatic copying of Claude settings (.claude/, .anthropic/)
     • Automatic pnpm approve-builds and pnpm install on creation
-    • Smart branch naming with worktrees/username/name pattern
+    • Smart branch naming with worktrees/repo_name/username/name pattern
     • Safe worktree removal with merge detection
     • Health checking with automatic fixing (recursive .env*local* detection)
 
@@ -1906,7 +1907,7 @@ gtr() {
     return 0
   fi
   
-  shift || { echo "Usage: gtr {create|rm|cd|claude|prune|doctor|init} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
+  shift || { echo "Usage: gtr {create|rm|cd|claude|prune|doctor|init} [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
 
   # Check for command-specific flags before parsing global flags
   local fix_mode="false"
