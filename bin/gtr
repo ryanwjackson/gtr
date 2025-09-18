@@ -1044,14 +1044,7 @@ gtr_init() {
   local main_worktree="$(_gtr_get_main_worktree)"
   local config_dir="$main_worktree/.gtr"
   local config_file="$config_dir/config"
-  
-  # Check if we're in a worktree (init should only run in main repo)
-  local git_dir=$(git rev-parse --git-dir)
-  if [[ "$git_dir" == *"/.git/worktrees/"* ]]; then
-    echo "❌ gtr init should be run from the main repository, not a worktree"
-    return 1
-  fi
-  
+
   if [[ "$init_doctor" == "true" ]]; then
     _gtr_init_doctor "$main_worktree" "$config_file" "$init_fix"
   else

@@ -25,7 +25,7 @@ source /path/to/bin/gtr
 command -v gtr >/dev/null || alias gtr='bash -lc "source /path/to/bin/gtr; gtr \"$@\""'
 ```
 
-3) Initialize per-repo configuration once inside your main repo:
+3) Initialize per-repo configuration (run from any worktree/branch):
 ```bash
 gtr init
 ```
