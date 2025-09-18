@@ -1115,6 +1115,25 @@ gtr_remove() {
     fi
   done
   
+  # If no worktree names provided, check if we're in a worktree
+  if [[ ${#names[@]} -eq 0 ]]; then
+    local current_dir="$(pwd)"
+    local git_dir=$(git rev-parse --git-dir 2>/dev/null)
+    
+    if [[ -n "$git_dir" && "$git_dir" == *"/.git/worktrees/"* ]]; then
+      # We're in a worktree, extract the worktree name
+      local worktree_name=$(basename "$current_dir")
+      echo "🔍 No worktree specified, detected current worktree: $worktree_name"
+      names+=("$worktree_name")
+    else
+      echo "❌ No worktree specified and not currently in a worktree"
+      echo "💡 Usage: gtr rm <worktree-name> or run from within a worktree"
+      echo "💡 Available worktrees:"
+      git worktree list
+      return 1
+    fi
+  fi
+  
   for name in "${names[@]}"; do
     _gtr_remove_worktree "$name" "$force" "$dry_run"
   done
@@ -1865,7 +1884,8 @@ USAGE:
 
 COMMANDS:
     create, c <name>...           Create new worktrees
-    remove, rm <name>...          Remove worktrees (with --force, --dry-run)
+    remove, rm [name]...          Remove worktrees (with --force, --dry-run)
+                                  If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
     claude <name>                 Run claude in worktree directory
@@ -1897,8 +1917,9 @@ EXAMPLES:
 
     # Cleanup
     gtr rm feature0                        # Remove worktree (with confirmation)
+    gtr rm                                 # Remove current worktree (when inside one)
     gtr rm feature0 --force                # Force remove worktree
-    gtr rm feature0 --dry-run              # Show what would be removed
+    gtr rm --dry-run                       # Show what would be removed (current worktree)
     gtr prune                              # Clean up merged worktrees
     gtr prune --base develop --force       # Clean up with custom base branch
 
