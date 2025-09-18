@@ -27,6 +27,8 @@ _gtr() {
     'list:List worktrees'
     'ls:Alias for list'
     'l:Alias for list'
+    'idea:Manage development ideas'
+    'i:Alias for idea'
     'claude:Run claude in worktree'
     'prune:Clean up merged worktrees'
     'doctor:Check/fix local files in worktree'
@@ -76,6 +78,20 @@ _gtr() {
           ;;
         list|ls|l)
           _arguments $global_opts
+          ;;
+        idea|i)
+          _arguments \
+            $global_opts \
+            '1:subcommand:(create c list l open o)' \
+            '--mine[Show only your ideas]' \
+            '--todo[Show only TODO status ideas]' \
+            '--status[Filter by status]:status:(TODO IN_PROGRESS DONE BLOCKED)' \
+            '--filter[Filter by content]:filter:_guard "[^-]*" filter'
+          ;;
+        open|o)
+          _arguments \
+            $global_opts \
+            '--mine[Show only your ideas]'
           ;;
         claude)
           _arguments \

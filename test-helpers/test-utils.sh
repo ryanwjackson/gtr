@@ -76,6 +76,28 @@ run_test_with_output() {
   fi
 }
 
+# Register and run a test with debug output
+register_test_with_debug() {
+  local test_name="$1"
+  local test_function="$2"
+
+  CURRENT_TEST="$test_name"
+  ((TEST_COUNT++))
+
+  echo -n "  $test_name ... "
+
+  # Run test in subshell but allow debug output to stderr
+  if (set -e; $test_function) 2>&1; then
+    echo -e "${GREEN}PASS${NC}"
+    ((PASSED_COUNT++))
+    return 0
+  else
+    echo -e "${RED}FAIL${NC}"
+    ((FAILED_COUNT++))
+    return 1
+  fi
+}
+
 # Assertion functions
 assert_equals() {
   local expected="$1"

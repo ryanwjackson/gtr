@@ -24,6 +24,8 @@ complete -c gtr -n '__fish_use_subcommand' -a cd -d 'Change directory to worktre
 complete -c gtr -n '__fish_use_subcommand' -a list -d 'List worktrees'
 complete -c gtr -n '__fish_use_subcommand' -a ls -d 'Alias for list'
 complete -c gtr -n '__fish_use_subcommand' -a l -d 'Alias for list'
+complete -c gtr -n '__fish_use_subcommand' -a idea -d 'Manage development ideas'
+complete -c gtr -n '__fish_use_subcommand' -a i -d 'Alias for idea'
 complete -c gtr -n '__fish_use_subcommand' -a claude -d 'Run claude in worktree'
 complete -c gtr -n '__fish_use_subcommand' -a cursor -d 'Run cursor in worktree'
 complete -c gtr -n '__fish_use_subcommand' -a prune -d 'Clean up merged worktrees'
@@ -52,6 +54,23 @@ complete -c gtr -n '__fish_seen_subcommand_from doctor' -l force -d 'Skip intera
 
 complete -c gtr -n '__fish_seen_subcommand_from init' -l doctor -d 'Check configuration coverage'
 complete -c gtr -n '__fish_seen_subcommand_from init' -l fix -d 'Auto-add missing files to config'
+
+# Idea subcommands
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a create -d 'Create new idea'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a c -d 'Alias for create'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a list -d 'List ideas'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a l -d 'Alias for list'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a open -d 'Interactive idea opener'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a o -d 'Alias for open'
+
+# Idea list options
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -l mine -d 'Show only your ideas'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -l todo -d 'Show only TODO status ideas'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -l status -d 'Filter by status' -x -a 'TODO IN_PROGRESS DONE BLOCKED'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -l filter -d 'Filter by content' -r
+
+# Idea open options
+complete -c gtr -n '__fish_seen_subcommand_from open o' -l mine -d 'Show only your ideas'
 
 # Name completion for worktree-taking commands
 for sc in create c remove rm cd claude cursor doctor

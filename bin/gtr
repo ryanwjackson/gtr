@@ -18,6 +18,16 @@
 #
 # ------------------------------------------------------------
 
+# Source library files in dependency order
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/gtr-core.sh"     # Core utilities and constants
+source "$SCRIPT_DIR/../lib/gtr-ui.sh"       # User interaction
+source "$SCRIPT_DIR/../lib/gtr-config.sh"   # Configuration management
+source "$SCRIPT_DIR/../lib/gtr-files.sh"    # File operations
+source "$SCRIPT_DIR/../lib/gtr-git.sh"      # Git operations
+source "$SCRIPT_DIR/../lib/gtr-commands.sh" # Command implementations
+source "$SCRIPT_DIR/../lib/gtr-ideas.sh"    # Idea management
+
 # Default version string placeholder; replaced during release packaging
 GTR_VERSION="@VERSION@"
 
@@ -805,7 +815,7 @@ _gtr_parse_global_flags() {
         echo "Please use --untracked instead"
         return 1
         ;;
-      --force|--dry-run)
+      --force|--dry-run|--mine|--todo|--status=*|--filter=*)
         # These are command-specific flags, pass them through
         args+=("$1")
         shift
@@ -813,7 +823,7 @@ _gtr_parse_global_flags() {
       --*)
         echo "Error: Unknown option '$1'"
         echo "Valid global options: --prefix, --username, --editor, --no-open, --no-install, --base, --untracked"
-        echo "Command-specific options: --force, --dry-run (for rm command)"
+        echo "Command-specific options: --force, --dry-run (for rm command), --mine, --todo, --status, --filter (for idea command)"
         return 1
         ;;
       *)
@@ -2136,6 +2146,7 @@ gtr_doctor() {
   fi
 }
 
+
 _gtr_show_help() {
   cat << 'EOF'
 gtr - Git worktree helper
@@ -2149,6 +2160,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
+    idea, i {create|list|open}    Manage idea files
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -2180,6 +2192,16 @@ EXAMPLES:
     gtr cd feature0                        # Navigate to worktree
     gtr claude feature0                    # Run claude in worktree
     gtr cursor feature0                    # Run cursor in worktree
+
+    # Manage ideas
+    gtr idea create                        # Create new idea (prompt for summary)
+    gtr idea create 'New feature'          # Create idea with summary
+    gtr idea create 'New feature' --less   # Create idea and open with less
+    gtr idea list                          # List all ideas
+    gtr idea list --mine                   # List your ideas
+    gtr idea list --todo                   # List TODO ideas
+    gtr idea open idea.md                  # Open idea file
+    gtr idea open idea.md --less           # Open idea with less
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model
@@ -2263,6 +2285,19 @@ gtr() {
     done
   fi
 
+  # Check for help flags in arguments for idea command before parsing global flags
+  if [[ "$cmd" == "i" || "$cmd" == "idea" ]]; then
+    for arg in "$@"; do
+      if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+        # Set up args for idea command and call it directly
+        _GTR_ARGS=("$@")
+        export _GTR_ARGS
+        gtr_idea
+        return 0
+      fi
+    done
+  fi
+
   # Parse global flags
   _gtr_parse_global_flags "$@"
   
@@ -2289,6 +2324,9 @@ gtr() {
     l|ls|list)
       gtr_list
       ;;
+    i|idea)
+      gtr_idea
+      ;;
     claude)
       gtr_claude
       ;;
@@ -2305,7 +2343,7 @@ gtr() {
       gtr_init
       ;;
     *)
-      echo "Unknown sub-command: $cmd (use create, rm, cd, claude, cursor, prune, doctor, init)"; return 1;;
+      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, claude, cursor, prune, doctor, init)"; return 1;;
   esac
 }
 

@@ -412,3 +412,257 @@ gtr_doctor() {
     fi
   fi
 }
+
+# Idea management commands
+
+_gtr_idea_show_help() {
+  cat << 'EOF'
+gtr idea - Manage development ideas across worktrees
+
+USAGE:
+    gtr idea [COMMAND] [OPTIONS] [ARGS...]
+
+COMMANDS:
+    create, c [summary]        Create a new idea file (default: prompt for summary)
+    list, l [OPTIONS]          List all ideas with optional filtering
+    open, o [OPTIONS]          Interactive idea opener with optional filtering
+    --help, -h                 Show this help message
+
+OPTIONS:
+    --mine                     Show only your ideas (for list/open commands)
+    --todo                     Show only TODO ideas (for list command)
+    --status=STATUS            Filter by status: TODO, IN_PROGRESS, DONE, BLOCKED (for list command)
+    --filter=STRING            Search for ideas containing STRING in title or content (for list command)
+
+EXAMPLES:
+    # Create ideas
+    gtr idea                           # Create idea (prompt for summary)
+    gtr idea "New feature idea"        # Create idea with summary
+    gtr idea create "Bug fix idea"     # Create idea with explicit command
+
+    # List ideas
+    gtr idea list                      # List all ideas
+    gtr idea list --mine               # List only your ideas
+    gtr idea list --todo               # List only TODO ideas
+    gtr idea list --status=IN_PROGRESS # List ideas in progress
+    gtr idea list --filter=bug         # Search for ideas containing "bug"
+
+    # Open ideas
+    gtr idea open                      # Interactive opener for all ideas
+    gtr idea open --mine               # Interactive opener for your ideas only
+
+FEATURES:
+    • Ideas are stored in .gtr/ideas/ directory
+    • Automatic metadata including author, timestamp, repo info
+    • Cross-worktree idea discovery and management
+    • Rich filtering and search capabilities
+    • Interactive idea selection and opening
+
+For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
+EOF
+}
+
+gtr_idea_create() {
+  local summary=""
+  local use_less="false"
+  
+  # Parse arguments - first non-option argument is the summary
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --less)
+        use_less="true"
+        ;;
+      --*)
+        # Skip other options
+        ;;
+      *)
+        if [[ -z "$summary" ]]; then
+          summary="$arg"
+        fi
+        ;;
+    esac
+  done
+  
+  # If no summary provided, prompt for it
+  if [[ -z "$summary" ]]; then
+    printf "Enter idea summary: "
+    read -r summary
+    if [[ -z "$summary" ]]; then
+      echo "❌ No summary provided. Idea creation cancelled."
+      return 1
+    fi
+  fi
+  
+  # Ensure ideas directory exists
+  if ! _gtr_ensure_ideas_dir; then
+    return 1
+  fi
+  
+  # Get repository information
+  local repo_info="$(_gtr_get_repo_info)"
+  IFS='|' read -r repo_name repo_url current_branch latest_commit <<< "$repo_info"
+  
+  # Generate filename and file path
+  local filename="$(_gtr_generate_idea_filename "$summary")"
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local file_path="$ideas_dir/$filename"
+  
+  # Create idea file content
+  local content="$(_gtr_create_idea_content "$summary" "$repo_name" "$repo_url" "$current_branch" "$latest_commit")"
+  
+  # Write idea file
+  if echo "$content" > "$file_path"; then
+    echo "✅ Created idea: $filename"
+    echo "📁 Location: $file_path"
+    
+    # Open in editor or less
+    if [[ "$use_less" == "true" ]]; then
+      echo "🔧 Opening with less..."
+      less "$file_path"
+    else
+      local editor="${_GTR_EDITOR:-cursor}"
+      if command -v "$editor" >/dev/null 2>&1; then
+        echo "🔧 Opening in $editor..."
+        "$editor" "$file_path"
+      else
+        echo "💡 Open with: $editor \"$file_path\""
+      fi
+    fi
+  else
+    echo "❌ Failed to create idea file: $file_path"
+    return 1
+  fi
+}
+
+gtr_idea_list() {
+  # Parse arguments for filtering
+  local filter_args=()
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --mine|--todo|--status=*|--filter=*)
+        filter_args+=("$arg")
+        ;;
+    esac
+  done
+  
+  # List ideas with filters
+  _gtr_list_ideas "${filter_args[@]}"
+}
+
+gtr_idea_open() {
+  local idea_file=""
+  local use_less="false"
+  
+  # Parse arguments
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --less)
+        use_less="true"
+        ;;
+      --*)
+        # Skip other options
+        ;;
+      *)
+        if [[ -z "$idea_file" ]]; then
+          idea_file="$arg"
+        fi
+        ;;
+    esac
+  done
+  
+  if [[ -z "$idea_file" ]]; then
+    echo "Usage: gtr idea open <idea-file> [--less]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --less               Open with less instead of editor"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  gtr idea open 20240101T120000Z_user_My-Idea.md"
+    echo "  gtr idea open 20240101T120000Z_user_My-Idea.md --less"
+    return 1
+  fi
+  
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local full_path="$ideas_dir/$idea_file"
+  
+  if [[ ! -f "$full_path" ]]; then
+    echo "❌ Idea file not found: $idea_file"
+    echo "💡 Available ideas:"
+    gtr_idea_list
+    return 1
+  fi
+  
+  if [[ "$use_less" == "true" ]]; then
+    less "$full_path"
+  else
+    local editor="${_GTR_EDITOR:-cursor}"
+    if command -v "$editor" >/dev/null 2>&1; then
+      "$editor" "$full_path"
+    else
+      echo "❌ Editor not found: $editor"
+      echo "💡 Open with: $editor \"$full_path\""
+      return 1
+    fi
+  fi
+}
+
+gtr_idea() {
+  local subcmd="${_GTR_ARGS[0]:-}"
+  
+  # Check for help flags first
+  if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+    _gtr_idea_show_help
+    return 0
+  fi
+  
+  # Remove the subcommand from args
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    _GTR_ARGS=("${_GTR_ARGS[@]:1}")
+  fi
+  
+  case "$subcmd" in
+    c|create)
+      gtr_idea_create
+      ;;
+    l|list)
+      gtr_idea_list
+      ;;
+    o|open)
+      gtr_idea_open
+      ;;
+    "")
+      echo "Usage: gtr idea {create|list|open} [OPTIONS]"
+      echo ""
+      echo "COMMANDS:"
+      echo "  create, c [summary]  Create a new idea file"
+      echo "  list, l             List ideas with optional filters"
+      echo "  open, o <file>      Open an idea file"
+      echo ""
+      echo "OPTIONS for list:"
+      echo "  --mine              Show only your ideas"
+      echo "  --todo              Show only TODO status ideas"
+      echo "  --status=STATUS     Show only ideas with specific status"
+      echo "  --filter=CONTENT    Filter by content (case-insensitive)"
+      echo ""
+      echo "OPTIONS for open:"
+      echo "  --less              Open with less instead of editor"
+      echo ""
+      echo "EXAMPLES:"
+      echo "  gtr idea create                    # Prompt for summary"
+      echo "  gtr idea create 'New feature'      # Create with summary"
+      echo "  gtr idea list                      # List all ideas"
+      echo "  gtr idea list --mine               # List your ideas"
+      echo "  gtr idea list --todo               # List TODO ideas"
+      echo "  gtr idea list --status=IN_PROGRESS # List in-progress ideas"
+      echo "  gtr idea list --filter=performance # Filter by content"
+      echo "  gtr idea open idea.md              # Open idea file"
+      echo "  gtr idea open idea.md --less       # Open with less"
+      return 1
+      ;;
+    *)
+      echo "Unknown idea sub-command: $subcmd"
+      echo "Use 'gtr idea' to see available commands"
+      return 1
+      ;;
+  esac
+}

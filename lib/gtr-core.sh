@@ -308,6 +308,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
+    idea, i {create|list|open}    Manage idea files
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -339,6 +340,16 @@ EXAMPLES:
     gtr cd feature0                        # Navigate to worktree
     gtr claude feature0                    # Run claude in worktree
     gtr cursor feature0                    # Run cursor in worktree
+
+    # Manage ideas
+    gtr idea create                        # Create new idea (prompt for summary)
+    gtr idea create 'New feature'          # Create idea with summary
+    gtr idea create 'New feature' --less   # Create idea and open with less
+    gtr idea list                          # List all ideas
+    gtr idea list --mine                   # List your ideas
+    gtr idea list --todo                   # List TODO ideas
+    gtr idea open idea.md                  # Open idea file
+    gtr idea open idea.md --less           # Open idea with less
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model
@@ -376,4 +387,289 @@ FEATURES:
 
 For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
 EOF
+}
+
+# Idea management helper functions
+
+# Helper function to get ideas directory
+# Usage: _gtr_get_ideas_dir
+# Returns: path to .gtr/ideas directory
+_gtr_get_ideas_dir() {
+  local main_worktree="$(_gtr_get_main_worktree)"
+  echo "$main_worktree/.gtr/ideas"
+}
+
+# Helper function to create ideas directory if it doesn't exist
+# Usage: _gtr_ensure_ideas_dir
+# Returns: 0 on success, 1 on failure
+_gtr_ensure_ideas_dir() {
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  
+  if [[ ! -d "$ideas_dir" ]]; then
+    if mkdir -p "$ideas_dir" 2>/dev/null; then
+      echo "📁 Created ideas directory: $ideas_dir"
+      return 0
+    else
+      echo "❌ Failed to create ideas directory: $ideas_dir" >&2
+      return 1
+    fi
+  fi
+  
+  return 0
+}
+
+# Helper function to generate idea filename
+# Usage: _gtr_generate_idea_filename "summary"
+# Returns: filename in format [ISO_DATETIME]_[username]_[summary].md
+_gtr_generate_idea_filename() {
+  local summary="$1"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local datetime=$(date -u +"%Y%m%dT%H%M%SZ")
+  
+  # Debug output for CI troubleshooting
+  if [[ "${GTR_DEBUG:-}" == "1" ]]; then
+    echo "DEBUG: _gtr_generate_idea_filename called with:" >&2
+    echo "  Input summary: '$summary'" >&2
+    echo "  Username: '$username'" >&2
+    echo "  Datetime: '$datetime'" >&2
+    echo "  Environment:" >&2
+    echo "    Shell: $0" >&2
+    echo "    Bash version: $(bash --version | head -1)" >&2
+    echo "    Sed version: $(sed --version 2>/dev/null | head -1 || echo "sed version unknown")" >&2
+    echo "    Locale: $LC_ALL $LANG" >&2
+  fi
+  
+  # Sanitize summary for filename (replace spaces with hyphens, replace special chars with dashes)
+  # Use a more explicit approach to avoid locale/version issues with sed
+  # First replace spaces with hyphens
+  local sanitized_summary=$(echo "$summary" | sed 's/ /-/g')
+  # Then replace any remaining non-alphanumeric characters (except dots, underscores, hyphens) with dashes
+  sanitized_summary=$(echo "$sanitized_summary" | sed 's/[^a-zA-Z0-9._-]/-/g')
+  # Only clean up leading dashes, preserve trailing dashes and consecutive dashes in the middle
+  # The test expects trailing dashes to be preserved (e.g., 'Test---Idea-----')
+  sanitized_summary=$(echo "$sanitized_summary" | sed 's/^-//')
+  
+  # Debug output for CI troubleshooting
+  if [[ "${GTR_DEBUG:-}" == "1" ]]; then
+    echo "  Sanitization steps:" >&2
+    echo "    Step 1 (spaces to hyphens): '$(echo "$summary" | sed 's/ /-/g')'" >&2
+    echo "    Step 2 (special chars to dashes): '$(echo "$summary" | sed 's/ /-/g' | sed 's/[^a-zA-Z0-9._-]/-/g')'" >&2
+    echo "    Step 3 (clean up edges): '$sanitized_summary'" >&2
+  fi
+  
+  # Limit length to avoid filesystem issues
+  if [[ ${#sanitized_summary} -gt 50 ]]; then
+    sanitized_summary="${sanitized_summary:0:50}"
+  fi
+  
+  local result="${datetime}_${username}_${sanitized_summary}.md"
+  
+  # Debug output for CI troubleshooting
+  if [[ "${GTR_DEBUG:-}" == "1" ]]; then
+    echo "  Final result: '$result'" >&2
+    echo "  Result length: ${#result}" >&2
+  fi
+  
+  echo "$result"
+}
+
+# Helper function to get repository information
+# Usage: _gtr_get_repo_info
+# Returns: array with repo_name, repo_url, current_branch, latest_commit
+_gtr_get_repo_info() {
+  local repo_name="$(_gtr_get_repo_name)"
+  local repo_url=$(git remote get-url origin 2>/dev/null || echo "")
+  local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  local latest_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  
+  echo "$repo_name|$repo_url|$current_branch|$latest_commit"
+}
+
+# Helper function to create idea file content
+# Usage: _gtr_create_idea_content "summary" "repo_name" "repo_url" "current_branch" "latest_commit"
+# Returns: markdown content for idea file
+_gtr_create_idea_content() {
+  local summary="$1"
+  local repo_name="$2"
+  local repo_url="$3"
+  local current_branch="$4"
+  local latest_commit="$5"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local datetime=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  cat << EOF
+---
+summary: "$summary"
+author: "$username"
+datetime: "$datetime"
+repo_name: "$repo_name"
+repo_url: "$repo_url"
+current_branch_name: "$current_branch"
+latest_commit: "$latest_commit"
+status: "TODO"
+---
+
+# $summary
+
+## Description
+
+<!-- Add your idea description here -->
+
+## Implementation Notes
+
+<!-- Add implementation details here -->
+
+## Acceptance Criteria
+
+<!-- Add acceptance criteria here -->
+
+## Related Issues/PRs
+
+<!-- Add related issues or PRs here -->
+EOF
+}
+
+# Helper function to list ideas with filtering
+# Usage: _gtr_list_ideas [--mine] [--todo] [--status=STATUS]
+# Returns: list of idea files with metadata
+_gtr_list_ideas() {
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local show_mine="false"
+  local show_todo="false"
+  local status_filter=""
+  local content_filter=""
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  
+  # Parse arguments
+  for arg in "$@"; do
+    case "$arg" in
+      --mine)
+        show_mine="true"
+        ;;
+      --todo)
+        show_todo="true"
+        ;;
+      --status=*)
+        status_filter="${arg#*=}"
+        ;;
+      --filter=*)
+        content_filter="${arg#*=}"
+        ;;
+    esac
+  done
+  
+  if [[ ! -d "$ideas_dir" ]]; then
+    echo "No ideas directory found. Create your first idea with 'gtr idea create'"
+    return 0
+  fi
+  
+  local idea_files=()
+  while IFS= read -r -d '' file; do
+    if [[ -f "$file" && "$file" == *.md ]]; then
+      idea_files+=("$file")
+    fi
+  done < <(find "$ideas_dir" -name "*.md" -type f -print0 2>/dev/null | sort -z)
+  
+  if [[ ${#idea_files[@]} -eq 0 ]]; then
+    echo "No ideas found. Create your first idea with 'gtr idea create'"
+    return 0
+  fi
+  
+  echo "📋 Ideas:"
+  echo ""
+  
+  for file in "${idea_files[@]}"; do
+    local filename=$(basename "$file")
+    local author=""
+    local summary=""
+    local status=""
+    local datetime=""
+    
+    # Extract metadata from YAML front matter
+    local in_frontmatter=false
+    while IFS= read -r line; do
+      if [[ "$line" == "---" ]]; then
+        if [[ "$in_frontmatter" == "false" ]]; then
+          in_frontmatter=true
+        else
+          break
+        fi
+      elif [[ "$in_frontmatter" == "true" ]]; then
+        case "$line" in
+          author:*)
+            author="${line#author: }"
+            author="${author%\"}"
+            author="${author#\"}"
+            ;;
+          summary:*)
+            summary="${line#summary: }"
+            summary="${summary%\"}"
+            summary="${summary#\"}"
+            ;;
+          status:*)
+            status="${line#status: }"
+            status="${status%\"}"
+            status="${status#\"}"
+            ;;
+          datetime:*)
+            datetime="${line#datetime: }"
+            datetime="${datetime%\"}"
+            datetime="${datetime#\"}"
+            ;;
+        esac
+      fi
+    done < "$file"
+    
+    # Apply filters
+    local should_show=true
+    
+    if [[ "$show_mine" == "true" && "$author" != "$username" ]]; then
+      should_show=false
+    fi
+    
+    if [[ "$show_todo" == "true" && "$status" != "TODO" ]]; then
+      should_show=false
+    fi
+    
+    if [[ -n "$status_filter" && "$status" != "$status_filter" ]]; then
+      should_show=false
+    fi
+    
+    if [[ -n "$content_filter" ]]; then
+      # Check if content filter matches summary or file content
+      local content_match=false
+      local filter_lower=$(echo "$content_filter" | tr '[:upper:]' '[:lower:]')
+      local filter_upper=$(echo "$content_filter" | tr '[:lower:]' '[:upper:]')
+      local summary_lower=$(echo "$summary" | tr '[:upper:]' '[:lower:]')
+      
+      if [[ "$summary" == *"$content_filter"* ]] || [[ "$summary_lower" == *"$filter_lower"* ]] || [[ "$summary" == *"$filter_upper"* ]]; then
+        content_match=true
+      else
+        # Check file content for the filter
+        if grep -qi "$content_filter" "$file" 2>/dev/null; then
+          content_match=true
+        fi
+      fi
+      
+      if [[ "$content_match" == "false" ]]; then
+        should_show=false
+      fi
+    fi
+    
+    if [[ "$should_show" == "true" ]]; then
+      # Format datetime for display
+      local display_date=""
+      if [[ -n "$datetime" ]]; then
+        display_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$datetime" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$datetime")
+      fi
+      
+      # Display idea
+      echo "📄 $filename"
+      echo "   Summary: $summary"
+      echo "   Author:  $author"
+      echo "   Status:  $status"
+      echo "   Date:    $display_date"
+      echo ""
+    fi
+  done
 }

@@ -36,8 +36,8 @@ jobs:
         echo ""
         echo "=== Checking module dependencies ==="
         echo "Total modules: $(ls lib/*.sh | wc -l)"
-        echo "Expected: 6 modules"
-        [ "$(ls lib/*.sh | wc -l)" -eq 6 ]
+        echo "Expected: 7 modules"
+        [ "$(ls lib/*.sh | wc -l)" -eq 7 ]
 
     - name: Test module loading
       run: |
