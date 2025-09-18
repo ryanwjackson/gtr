@@ -23,45 +23,47 @@ GTR_VERSION="@VERSION@"
 
 # Version output helper for CLI
 _gtr_print_version() {
-  if [[ "$GTR_VERSION" == "@VERSION@" || -z "$GTR_VERSION" ]]; then
-    # Try to get version from various sources
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local version_info=""
-
-    # Method 1: Check if we're in a git repository (development case)
-    if [[ -d "$script_dir/../.git" ]] && command -v git >/dev/null 2>&1; then
-      local git_describe
-      git_describe=$(cd "$script_dir/.." && git describe --tags --always 2>/dev/null)
-      if [[ -n "$git_describe" ]]; then
-        version_info=" ($git_describe)"
-      fi
-      echo "gtr version dev${version_info}"
-      return
-    fi
-
-    # Method 2: Check Homebrew formula info
-    if command -v brew >/dev/null 2>&1; then
-      local brew_info
-      brew_info=$(brew list --versions gtr 2>/dev/null | head -1)
-      if [[ -n "$brew_info" ]]; then
-        local brew_version="${brew_info#gtr }"
-        echo "gtr version $brew_version (homebrew)"
-        return
-      fi
-    fi
-
-    # Method 3: Try to extract from script path (some package managers include version in path)
-    if [[ "$script_dir" =~ /([0-9]+\.[0-9]+(\.[0-9]+)?)/bin$ ]]; then
-      local path_version="${BASH_REMATCH[1]}"
-      echo "gtr version $path_version"
-      return
-    fi
-
-    # Fallback
-    echo "gtr version unknown"
-  else
+  # If we have a real version (not the placeholder), use it directly
+  if [[ -n "$GTR_VERSION" && "$GTR_VERSION" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     echo "gtr version $GTR_VERSION"
+    return
   fi
+
+  # Otherwise, try to get version from various sources
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local version_info=""
+
+  # Method 1: Check Homebrew formula info first (for installed versions)
+  if command -v brew >/dev/null 2>&1; then
+    local brew_info
+    brew_info=$(brew list --versions gtr 2>/dev/null | head -1)
+    if [[ -n "$brew_info" ]]; then
+      local brew_version="${brew_info#gtr }"
+      echo "gtr version $brew_version"
+      return
+    fi
+  fi
+
+  # Method 2: Check if we're in a git repository (development case)
+  if [[ -d "$script_dir/../.git" ]] && command -v git >/dev/null 2>&1; then
+    local git_describe
+    git_describe=$(cd "$script_dir/.." && git describe --tags --always 2>/dev/null)
+    if [[ -n "$git_describe" ]]; then
+      version_info=" ($git_describe)"
+    fi
+    echo "gtr version dev${version_info}"
+    return
+  fi
+
+  # Method 3: Try to extract from script path (some package managers include version in path)
+  if [[ "$script_dir" =~ /([0-9]+\.[0-9]+(\.[0-9]+)?)/bin$ ]]; then
+    local path_version="${BASH_REMATCH[1]}"
+    echo "gtr version $path_version"
+    return
+  fi
+
+  # Fallback
+  echo "gtr version unknown"
 }
 
 # Private helper functions (prefixed with _gtr_)
