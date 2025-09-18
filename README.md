@@ -109,6 +109,8 @@ gtr idea list                             # list all ideas across worktrees
 gtr idea list --mine                      # list your ideas only
 gtr idea list --todo                      # list TODO status ideas
 gtr idea list --filter=performance        # search ideas by content
+gtr idea open                             # interactive idea opener
+gtr idea open --mine                      # interactive opener (your ideas only)
 
 # Cleanup
 gtr rm feature0 --dry-run                 # preview removal
@@ -169,11 +171,26 @@ gtr idea list --filter=performance        # Search by content (case-insensitive)
 gtr i l --filter=bug                      # Short form with filter
 ```
 
+#### Opening Ideas
+```bash
+gtr idea open                             # Interactive idea opener
+gtr idea open --mine                      # Interactive opener (your ideas only)
+gtr i o                                   # Short form
+gtr i o --mine                            # Short form with filter
+```
+
 Ideas are automatically:
 - **Ordered chronologically** (newest first)
 - **Searched across all worktrees** and main repository
 - **Filtered by content** in both title and markdown body
 - **Displayed with worktree context** showing where each idea was created
+
+The interactive opener (`gtr idea open`) provides:
+- **Visual highlighting** of the selected row with background color
+- **Status prefixes** showing `[TODO]`, `[IN_PROGRESS]`, etc.
+- **Arrow key navigation** (↑/↓) to browse ideas
+- **Worktree and branch information** in parentheses
+- **Filtering support** with `--mine` to show only your ideas
 
 ### Configuration (.gtr/config)
 INI-like sections in your main repository:

@@ -22,7 +22,7 @@ Change directory to a worktree path.
 .B list, ls, l
 List all worktrees.
 .TP
-.B idea, i \fI[summary|list]\fR
+.B idea, i \fI[summary|list|open]\fR
 Manage development ideas across worktrees (default: create).
 .TP
 .B claude \fIname\fR
@@ -118,6 +118,8 @@ $ gtr idea
 $ gtr idea 'Performance optimization'
 $ gtr idea list
 $ gtr idea list --mine --filter=bug
+$ gtr idea open
+$ gtr idea open --mine
 
 # Cleanup
 $ gtr rm feature0 --dry-run

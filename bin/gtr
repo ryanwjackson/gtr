@@ -2497,12 +2497,213 @@ gtr_idea_list() {
   _gtr_list_ideas "${filter_args[@]}"
 }
 
+gtr_idea_open() {
+  # Parse arguments for filtering
+  local show_mine="false"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --mine)
+        show_mine="true"
+        ;;
+    esac
+  done
+  
+  # Get all worktree directories
+  local worktree_dirs=($(_gtr_get_all_worktree_dirs))
+  local idea_files=()
+  
+  # Search for idea files in all worktrees
+  for worktree_dir in "${worktree_dirs[@]}"; do
+    local ideas_dir="$worktree_dir/.gtr/ideas"
+    if [[ -d "$ideas_dir" ]]; then
+      while IFS= read -r -d '' file; do
+        if [[ -f "$file" && "$file" == *.md ]]; then
+          idea_files+=("$file")
+        fi
+      done < <(find "$ideas_dir" -name "*.md" -type f -print0 2>/dev/null)
+    fi
+  done
+  
+  if [[ ${#idea_files[@]} -eq 0 ]]; then
+    echo "No ideas found. Create your first idea with 'gtr idea create'"
+    return 0
+  fi
+  
+  # Sort by creation date (newest first) using filename timestamp
+  IFS=$'\n' idea_files=($(printf '%s\n' "${idea_files[@]}" | sort -r))
+  
+  # Create array of display strings with branch info and status
+  local display_items=()
+  local file_paths=()
+  
+  for file in "${idea_files[@]}"; do
+    local filename=$(basename "$file")
+    local worktree_name=$(basename "$(dirname "$(dirname "$file")")")
+    local summary=""
+    local current_branch=""
+    local status=""
+    local author=""
+    
+    # Extract metadata from YAML front matter
+    local in_frontmatter=false
+    while IFS= read -r line; do
+      if [[ "$line" == "---" ]]; then
+        if [[ "$in_frontmatter" == "false" ]]; then
+          in_frontmatter=true
+        else
+          break
+        fi
+      elif [[ "$in_frontmatter" == "true" ]]; then
+        case "$line" in
+          summary:*)
+            summary="${line#summary: }"
+            summary="${summary%\"}"
+            summary="${summary#\"}"
+            ;;
+          current_branch_name:*)
+            current_branch="${line#current_branch_name: }"
+            current_branch="${current_branch%\"}"
+            current_branch="${current_branch#\"}"
+            ;;
+          status:*)
+            status="${line#status: }"
+            status="${status%\"}"
+            status="${status#\"}"
+            ;;
+          author:*)
+            author="${line#author: }"
+            author="${author%\"}"
+            author="${author#\"}"
+            ;;
+        esac
+      fi
+    done < "$file"
+    
+    # Apply mine filter
+    if [[ "$show_mine" == "true" && "$author" != "$username" ]]; then
+      continue
+    fi
+    
+    # Create display string with status
+    local display_string=""
+    if [[ -n "$summary" ]]; then
+      display_string="$summary"
+    else
+      display_string="$filename"
+    fi
+    
+    # Add status prefix
+    if [[ -n "$status" ]]; then
+      display_string="[$status] $display_string"
+    else
+      display_string="[TODO] $display_string"
+    fi
+    
+    # Add worktree/branch info
+    if [[ "$worktree_name" != "$(basename "$(_gtr_get_main_worktree)")" ]]; then
+      display_string="$display_string ($worktree_name/$current_branch)"
+    else
+      display_string="$display_string (main/$current_branch)"
+    fi
+    
+    display_items+=("$display_string")
+    file_paths+=("$file")
+  done
+  
+  if [[ ${#display_items[@]} -eq 0 ]]; then
+    echo "No ideas found matching criteria."
+    return 0
+  fi
+  
+  # Interactive selection
+  local selected_index=0
+  local max_index=$((${#display_items[@]} - 1))
+  
+  # Function to display menu
+  display_menu() {
+    clear
+    echo "📋 Select idea to open:"
+    echo ""
+    
+    for i in "${!display_items[@]}"; do
+      if [[ $i -eq $selected_index ]]; then
+        # Highlighted row with background color
+        echo -e "\033[48;5;236m  ▶️  ${display_items[$i]}\033[0m"
+      else
+        echo "     ${display_items[$i]}"
+      fi
+    done
+    
+    echo ""
+    echo "Use ↑/↓ arrows to navigate, Enter to select, q to quit"
+  }
+  
+  # Function to handle key input
+  handle_key() {
+    local key
+    read -rsn1 key
+    
+    case "$key" in
+      $'\x1b')  # ESC sequence
+        read -rsn2 key
+        case "$key" in
+          '[A')  # Up arrow
+            if [[ $selected_index -gt 0 ]]; then
+              selected_index=$((selected_index - 1))
+            fi
+            ;;
+          '[B')  # Down arrow
+            if [[ $selected_index -lt $max_index ]]; then
+              selected_index=$((selected_index + 1))
+            fi
+            ;;
+        esac
+        ;;
+      '')  # Enter
+        return 0
+        ;;
+      'q')  # Quit
+        echo "Cancelled."
+        return 1
+        ;;
+    esac
+    return 2
+  }
+  
+  # Main selection loop
+  while true; do
+    display_menu
+    handle_key
+    local result=$?
+    
+    if [[ $result -eq 0 ]]; then
+      # Selection made
+      local selected_file="${file_paths[$selected_index]}"
+      local editor="${_GTR_EDITOR:-cursor}"
+      
+      if command -v "$editor" >/dev/null 2>&1; then
+        echo "🔧 Opening ${display_items[$selected_index]} in $editor..."
+        "$editor" "$selected_file"
+      else
+        echo "💡 Open with: $editor \"$selected_file\""
+      fi
+      break
+    elif [[ $result -eq 1 ]]; then
+      # Quit
+      break
+    fi
+    # Continue loop for other keys
+  done
+}
+
 gtr_idea() {
   local subcmd="${_GTR_ARGS[0]:-}"
   
   # Check if first argument is a known subcommand
   case "$subcmd" in
-    c|create|l|list)
+    c|create|l|list|o|open)
       # Remove the subcommand from args
       if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
         _GTR_ARGS=("${_GTR_ARGS[@]:1}")
@@ -2514,6 +2715,9 @@ gtr_idea() {
           ;;
         l|list)
           gtr_idea_list
+          ;;
+        o|open)
+          gtr_idea_open
           ;;
       esac
       ;;
@@ -2541,7 +2745,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
-    idea, i [summary|list]        Manage idea files (default: create)
+    idea, i [summary|list|open]   Manage idea files (default: create)
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -2581,6 +2785,8 @@ EXAMPLES:
     gtr idea list --mine                   # List your ideas
     gtr idea list --todo                   # List TODO ideas
     gtr idea list --filter=bug             # Search for 'bug' in titles/content
+    gtr idea open                          # Interactive idea opener
+    gtr idea open --mine                   # Interactive opener (your ideas only)
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model

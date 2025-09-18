@@ -60,12 +60,17 @@ complete -c gtr -n '__fish_seen_subcommand_from idea i' -a create -d 'Create new
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -a c -d 'Alias for create'
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -a list -d 'List ideas'
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -a l -d 'Alias for list'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a open -d 'Interactive idea opener'
+complete -c gtr -n '__fish_seen_subcommand_from idea i' -a o -d 'Alias for open'
 
 # Idea list options
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -l mine -d 'Show only your ideas'
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -l todo -d 'Show only TODO status ideas'
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -l status -d 'Filter by status' -x -a 'TODO IN_PROGRESS DONE BLOCKED'
 complete -c gtr -n '__fish_seen_subcommand_from idea i' -l filter -d 'Filter by content' -r
+
+# Idea open options
+complete -c gtr -n '__fish_seen_subcommand_from open o' -l mine -d 'Show only your ideas'
 
 # Name completion for worktree-taking commands
 for sc in create c remove rm cd claude cursor doctor

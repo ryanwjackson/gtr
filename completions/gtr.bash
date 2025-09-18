@@ -41,7 +41,7 @@ _gtr_init_opts() {
 }
 
 _gtr_idea_subcommands() {
-  echo "create c list l"
+  echo "create c list l open o"
 }
 
 _gtr_idea_list_opts() {
@@ -90,6 +90,11 @@ _gtr_completion() {
     elif [[ "$idea_subcmd" == "list" || "$idea_subcmd" == "l" ]]; then
       if [[ "$cur" == -* ]]; then
         COMPREPLY=( $(compgen -W "$(_gtr_idea_list_opts)" -- "$cur") )
+        return 0
+      fi
+    elif [[ "$idea_subcmd" == "open" || "$idea_subcmd" == "o" ]]; then
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--mine" -- "$cur") )
         return 0
       fi
     fi
