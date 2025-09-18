@@ -94,13 +94,87 @@ test_generate_idea_filename() {
 }
 
 test_generate_idea_filename_special_chars() {
+  local input='Test & Idea!@#$%'
   local result
-  result=$(_gtr_generate_idea_filename 'Test & Idea!@#$%')
+  
+  # Enable debug mode for this test
+  export GTR_DEBUG=1
+  result=$(_gtr_generate_idea_filename "$input")
+  unset GTR_DEBUG
+  
+  # Debug information for CI
+  echo "DEBUG: Environment information:"
+  echo "  Shell: $0"
+  echo "  Bash version: $(bash --version | head -1)"
+  echo "  Sed version: $(sed --version 2>/dev/null | head -1 || echo "sed version unknown")"
+  echo "  Locale: $LC_ALL $LANG"
+  echo "  OS: $(uname -a)"
+  echo ""
+  
+  echo "DEBUG: Input and processing steps:"
+  echo "  Input: '$input'"
+  echo "  Input length: ${#input}"
+  echo "  Input bytes (hex): $(echo -n "$input" | xxd -p)"
+  echo ""
+  
+  # Test each step of the sanitization process
+  local step1=$(echo "$input" | sed 's/ /-/g')
+  local step2=$(echo "$step1" | sed 's/[^a-zA-Z0-9._-]/-/g')
+  local step3=$(echo "$step2" | sed 's/^-\|-$//g')
+  
+  echo "DEBUG: Sanitization steps:"
+  echo "  Step 1 (spaces to hyphens): '$step1'"
+  echo "  Step 2 (special chars to dashes): '$step2'"
+  echo "  Step 3 (clean up edges): '$step3'"
+  echo ""
+  
+  echo "DEBUG: Final result:"
+  echo "  Result: '$result'"
+  echo "  Result length: ${#result}"
+  echo "  Result bytes (hex): $(echo -n "$result" | xxd -p)"
+  echo ""
+  
+  # Test the regex pattern components
+  local datetime_part="${result%%_*}"
+  local username_part="${result#*_}"
+  username_part="${username_part%%_*}"
+  local summary_part="${result#*_}"
+  summary_part="${summary_part#*_}"
+  summary_part="${summary_part%.md}"
+  
+  echo "DEBUG: Parsed components:"
+  echo "  Datetime: '$datetime_part'"
+  echo "  Username: '$username_part'"
+  echo "  Summary: '$summary_part'"
+  echo ""
+  
+  # Test individual regex patterns
+  echo "DEBUG: Regex pattern tests:"
+  if [[ "$datetime_part" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]; then
+    echo "  Datetime pattern: PASS"
+  else
+    echo "  Datetime pattern: FAIL (expected YYYYMMDDTHHMMSSZ)"
+  fi
+  
+  if [[ "$username_part" == "testuser" ]]; then
+    echo "  Username pattern: PASS"
+  else
+    echo "  Username pattern: FAIL (expected 'testuser', got '$username_part')"
+  fi
+  
+  if [[ "$summary_part" == "Test---Idea-----" ]]; then
+    echo "  Summary pattern: PASS"
+  else
+    echo "  Summary pattern: FAIL (expected 'Test---Idea-----', got '$summary_part')"
+  fi
+  echo ""
   
   # Check that special characters are sanitized
   if [[ "$result" =~ ^[0-9]{8}T[0-9]{6}Z_testuser_Test---Idea-----\.md$ ]]; then
+    echo "DEBUG: Overall pattern match: PASS"
     return 0
   else
+    echo "DEBUG: Overall pattern match: FAIL"
     echo "ASSERTION FAILED: generate_idea_filename special character sanitization"
     echo "  Expected: YYYYMMDDTHHMMSSZ_testuser_Test---Idea-----.md"
     echo "  Actual:   $result"
