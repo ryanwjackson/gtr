@@ -8,7 +8,9 @@ Usage: bin/release [options] <version>
 Create a GitHub Release for the given version.
 
 Arguments:
-  version              Semver like 1.2.3 or v1.2.3. The leading "v" will be added if missing.
+  version              Semver like 1.2.3 or v1.2.3, or bump keyword (major, minor, patch).
+                       The leading "v" will be added if missing for explicit versions.
+                       Bump keywords will increment the latest git tag version.
 
 Options:
   -m, --message <msg>  Release notes/title message. Defaults to the normalized version string.
@@ -25,14 +27,23 @@ Behavior:
   - Fails if the tag already exists locally or remotely unless --force is provided.
 
 Examples:
-  # Simple release with default notes (the tag itself)
+  # Simple release with explicit version
   bin/release 0.1.2
 
   # Explicit tag format is also accepted
   bin/release v0.1.2
 
+  # Bump patch version from current (e.g., v1.2.3 -> v1.2.4)
+  bin/release patch
+
+  # Bump minor version from current (e.g., v1.2.3 -> v1.3.0)
+  bin/release minor
+
+  # Bump major version from current (e.g., v1.2.3 -> v2.0.0)
+  bin/release major
+
   # Provide custom release notes/title
-  bin/release 0.1.2 -m "Bugfixes and improvements"
+  bin/release patch -m "Bugfixes and improvements"
 USAGE
 }
 
@@ -80,18 +91,72 @@ if [[ -z "$version" ]]; then
   exit 1
 fi
 
-# Normalize version to start with 'v'
-if [[ "$version" != v* ]]; then
-  tag="v$version"
+# Handle semantic version keywords or explicit versions
+if [[ "$version" =~ ^(major|minor|patch)$ ]]; then
+  # Get current version and bump it
+  current_version=$(get_current_version)
+  tag=$(bump_version "$current_version" "$version")
+  echo "Bumping $version from $current_version to $tag"
 else
-  tag="$version"
+  # Normalize explicit version to start with 'v'
+  if [[ "$version" != v* ]]; then
+    tag="v$version"
+  else
+    tag="$version"
+  fi
+
+  # Basic semver validation (vMAJOR.MINOR.PATCH)
+  if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: version must be semantic version (e.g., 1.2.3 or v1.2.3) or bump keyword (major, minor, patch)" >&2
+    exit 1
+  fi
 fi
 
-# Basic semver validation (vMAJOR.MINOR.PATCH)
-if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Error: version must be semantic version (e.g., 1.2.3 or v1.2.3)" >&2
-  exit 1
-fi
+# Function to get the latest version tag from git
+get_current_version() {
+  # Get the latest tag that looks like a version (vX.Y.Z)
+  local latest_tag
+  latest_tag=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
+  if [[ -z "$latest_tag" ]]; then
+    echo "v0.0.0"  # Default if no version tags exist
+  else
+    echo "$latest_tag"
+  fi
+}
+
+# Function to bump version based on type
+bump_version() {
+  local current_version="$1"
+  local bump_type="$2"
+
+  # Remove 'v' prefix for processing
+  local version_numbers="${current_version#v}"
+
+  # Split into major.minor.patch
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "$version_numbers"
+
+  case "$bump_type" in
+    major)
+      major=$((major + 1))
+      minor=0
+      patch=0
+      ;;
+    minor)
+      minor=$((minor + 1))
+      patch=0
+      ;;
+    patch)
+      patch=$((patch + 1))
+      ;;
+    *)
+      echo "Error: Invalid bump type: $bump_type" >&2
+      exit 1
+      ;;
+  esac
+
+  echo "v$major.$minor.$patch"
+}
 
 notes="${message:-$tag}"
 
