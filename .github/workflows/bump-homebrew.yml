@@ -81,10 +81,18 @@ jobs:
           git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
 
           # In-place edit with Perl (portable across BSD/GNU)
-          perl -0777 -pe 's|^  url ".*"|  url "'${{ steps.meta.outputs.tarball }}'"|m; s|^  sha256 ".*"|  sha256 "'${{ steps.meta.outputs.sha256 }}'"|m' -i "$FORMULA_PATH"
+          NEW_URL="${{ steps.meta.outputs.tarball }}"
+          NEW_SHA="${{ steps.meta.outputs.sha256 }}"
+          URL="$NEW_URL" SHA="$NEW_SHA" perl -0777 -i -pe 's|^  url ".*"|  url "$ENV{URL}"|m; s|^  sha256 ".*"|  sha256 "$ENV{SHA}"|m' "$FORMULA_PATH"
 
           echo "Diff:"
           git --no-pager diff -- "$FORMULA_PATH" || true
+
+          # If no changes were made, exit successfully (nothing to bump)
+          if git diff --quiet -- "$FORMULA_PATH"; then
+            echo "No changes detected in $FORMULA_PATH; skipping commit and PR."
+            exit 0
+          fi
 
           git add "$FORMULA_PATH"
           git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}$SUFFIX"
