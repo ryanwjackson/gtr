@@ -415,6 +415,53 @@ gtr_doctor() {
 
 # Idea management commands
 
+_gtr_idea_show_help() {
+  cat << 'EOF'
+gtr idea - Manage development ideas across worktrees
+
+USAGE:
+    gtr idea [COMMAND] [OPTIONS] [ARGS...]
+
+COMMANDS:
+    create, c [summary]        Create a new idea file (default: prompt for summary)
+    list, l [OPTIONS]          List all ideas with optional filtering
+    open, o [OPTIONS]          Interactive idea opener with optional filtering
+    --help, -h                 Show this help message
+
+OPTIONS:
+    --mine                     Show only your ideas (for list/open commands)
+    --todo                     Show only TODO ideas (for list command)
+    --status=STATUS            Filter by status: TODO, IN_PROGRESS, DONE, BLOCKED (for list command)
+    --filter=STRING            Search for ideas containing STRING in title or content (for list command)
+
+EXAMPLES:
+    # Create ideas
+    gtr idea                           # Create idea (prompt for summary)
+    gtr idea "New feature idea"        # Create idea with summary
+    gtr idea create "Bug fix idea"     # Create idea with explicit command
+
+    # List ideas
+    gtr idea list                      # List all ideas
+    gtr idea list --mine               # List only your ideas
+    gtr idea list --todo               # List only TODO ideas
+    gtr idea list --status=IN_PROGRESS # List ideas in progress
+    gtr idea list --filter=bug         # Search for ideas containing "bug"
+
+    # Open ideas
+    gtr idea open                      # Interactive opener for all ideas
+    gtr idea open --mine               # Interactive opener for your ideas only
+
+FEATURES:
+    • Ideas are stored in .gtr/ideas/ directory
+    • Automatic metadata including author, timestamp, repo info
+    • Cross-worktree idea discovery and management
+    • Rich filtering and search capabilities
+    • Interactive idea selection and opening
+
+For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
+EOF
+}
+
 gtr_idea_create() {
   local summary=""
   local use_less="false"
@@ -561,6 +608,12 @@ gtr_idea_open() {
 
 gtr_idea() {
   local subcmd="${_GTR_ARGS[0]:-}"
+  
+  # Check for help flags first
+  if [[ "$subcmd" == "--help" || "$subcmd" == "-h" ]]; then
+    _gtr_idea_show_help
+    return 0
+  fi
   
   # Remove the subcommand from args
   if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then

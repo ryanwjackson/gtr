@@ -95,7 +95,7 @@ test_generate_idea_filename() {
 
 test_generate_idea_filename_special_chars() {
   local result
-  result=$(_gtr_generate_idea_filename "Test & Idea!@#$%")
+  result=$(_gtr_generate_idea_filename 'Test & Idea!@#$%')
   
   # Check that special characters are sanitized
   if [[ "$result" =~ ^[0-9]{8}T[0-9]{6}Z_testuser_Test---Idea-----\.md$ ]]; then
@@ -116,7 +116,15 @@ test_get_repo_info() {
   
   assert_equals "repo" "$repo_name" "repo_name should be 'repo'"
   assert_equals "https://github.com/test/repo.git" "$repo_url" "repo_url should be correct"
-  assert_equals "main" "$current_branch" "current_branch should be 'main'"
+  # Accept either 'main' or 'master' as default branch names
+  if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+    return 0
+  else
+    echo "ASSERTION FAILED: current_branch should be 'main' or 'master'"
+    echo "  Expected: main or master"
+    echo "  Actual:   $current_branch"
+    return 1
+  fi
 }
 
 test_create_idea_content() {
@@ -449,6 +457,44 @@ test_idea_command_help() {
   assert_contains "$output" "open, o" "should show open command"
 }
 
+test_idea_command_help_flag() {
+  _GTR_ARGS=("--help")
+  local output
+  output=$(gtr_idea 2>&1)
+  
+  assert_contains "$output" "gtr idea - Manage development ideas across worktrees" "should show help title"
+  assert_contains "$output" "USAGE:" "should show usage section"
+  assert_contains "$output" "COMMANDS:" "should show commands section"
+  assert_contains "$output" "create, c [summary]" "should show create command"
+  assert_contains "$output" "list, l [OPTIONS]" "should show list command"
+  assert_contains "$output" "open, o [OPTIONS]" "should show open command"
+  assert_contains "$output" "--help, -h" "should show help option"
+  assert_contains "$output" "OPTIONS:" "should show options section"
+  assert_contains "$output" "--mine" "should show mine option"
+  assert_contains "$output" "--todo" "should show todo option"
+  assert_contains "$output" "--status=STATUS" "should show status option"
+  assert_contains "$output" "--filter=STRING" "should show filter option"
+  assert_contains "$output" "EXAMPLES:" "should show examples section"
+  assert_contains "$output" "FEATURES:" "should show features section"
+}
+
+test_idea_command_help_short_flag() {
+  _GTR_ARGS=("-h")
+  local output
+  output=$(gtr_idea 2>&1)
+  
+  assert_contains "$output" "gtr idea - Manage development ideas across worktrees" "should show help title"
+  assert_contains "$output" "USAGE:" "should show usage section"
+  assert_contains "$output" "COMMANDS:" "should show commands section"
+  assert_contains "$output" "create, c [summary]" "should show create command"
+  assert_contains "$output" "list, l [OPTIONS]" "should show list command"
+  assert_contains "$output" "open, o [OPTIONS]" "should show open command"
+  assert_contains "$output" "--help, -h" "should show help option"
+  assert_contains "$output" "OPTIONS:" "should show options section"
+  assert_contains "$output" "EXAMPLES:" "should show examples section"
+  assert_contains "$output" "FEATURES:" "should show features section"
+}
+
 test_idea_command_create() {
   _GTR_ARGS=("create" "Test Command Idea" "--less")
   local output
@@ -562,6 +608,8 @@ main() {
   register_test "idea_list_content_filter" test_idea_list_content_filter
   register_test "idea_list_content_filter_case_insensitive" test_idea_list_content_filter_case_insensitive
   register_test "idea_command_help" test_idea_command_help
+  register_test "idea_command_help_flag" test_idea_command_help_flag
+  register_test "idea_command_help_short_flag" test_idea_command_help_short_flag
   register_test "idea_command_create" test_idea_command_create
   register_test "idea_command_list" test_idea_command_list
   register_test "idea_command_open" test_idea_command_open
