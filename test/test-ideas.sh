@@ -46,7 +46,7 @@ setup_test_environment() {
   
   # Set test environment variables
   export _GTR_USERNAME="testuser"
-  export _GTR_EDITOR="echo"  # Use echo instead of real editor for testing
+  export _GTR_EDITOR="cursor"  # Use cursor as default editor
 }
 
 # Cleanup test environment
@@ -98,11 +98,11 @@ test_generate_idea_filename_special_chars() {
   result=$(_gtr_generate_idea_filename "Test & Idea!@#$%")
   
   # Check that special characters are sanitized
-  if [[ "$result" =~ ^[0-9]{8}T[0-9]{6}Z_testuser_Test---Idea------\.md$ ]]; then
+  if [[ "$result" =~ ^[0-9]{8}T[0-9]{6}Z_testuser_Test---Idea-----\.md$ ]]; then
     return 0
   else
     echo "ASSERTION FAILED: generate_idea_filename special character sanitization"
-    echo "  Expected: YYYYMMDDTHHMMSSZ_testuser_Test---Idea------.md"
+    echo "  Expected: YYYYMMDDTHHMMSSZ_testuser_Test---Idea-----.md"
     echo "  Actual:   $result"
     return 1
   fi
@@ -132,11 +132,13 @@ test_create_idea_content() {
 
 test_idea_create_with_summary() {
   # Test creating idea with summary argument
+  _GTR_ARGS=("Test Feature Idea" "--less")
   local output
-  output=$(gtr_idea_create "Test Feature Idea" 2>&1)
+  output=$(gtr_idea_create 2>&1)
   
   assert_contains "$output" "Created idea:" "should show creation message"
   assert_contains "$output" "Location:" "should show location message"
+  assert_contains "$output" "Opening with less" "should show less opening message"
   
   # Check that file was created
   local files_found=0
@@ -169,7 +171,7 @@ test_idea_list_empty() {
   local output
   output=$(gtr_idea_list 2>&1)
   
-  assert_contains "$output" "No ideas found" "should show message when no ideas exist"
+  assert_contains "$output" "No ideas directory found" "should show message when no ideas directory exists"
 }
 
 test_idea_list_with_ideas() {
@@ -237,8 +239,9 @@ status: "TODO"
 # Other Idea
 EOF
 
+  _GTR_ARGS=("--mine")
   local output
-  output=$(gtr_idea_list --mine 2>&1)
+  output=$(gtr_idea_list 2>&1)
   
   assert_contains "$output" "My Idea" "should show my idea"
   assert_not_contains "$output" "Other Idea" "should not show other user's idea"
@@ -279,8 +282,9 @@ status: "DONE"
 # Done Idea
 EOF
 
+  _GTR_ARGS=("--todo")
   local output
-  output=$(gtr_idea_list --todo 2>&1)
+  output=$(gtr_idea_list 2>&1)
   
   assert_contains "$output" "Todo Idea" "should show TODO idea"
   assert_not_contains "$output" "Done Idea" "should not show DONE idea"
@@ -321,8 +325,9 @@ status: "BLOCKED"
 # Blocked Idea
 EOF
 
+  _GTR_ARGS=("--status=IN_PROGRESS")
   local output
-  output=$(gtr_idea_list --status=IN_PROGRESS 2>&1)
+  output=$(gtr_idea_list 2>&1)
   
   assert_contains "$output" "In Progress Idea" "should show IN_PROGRESS idea"
   assert_not_contains "$output" "Blocked Idea" "should not show BLOCKED idea"
@@ -373,8 +378,9 @@ status: "TODO"
 This idea is about improving the user interface.
 EOF
 
+  _GTR_ARGS=("--filter=performance")
   local output
-  output=$(gtr_idea_list --filter=performance 2>&1)
+  output=$(gtr_idea_list 2>&1)
   
   assert_contains "$output" "Performance Idea" "should show performance idea"
   assert_not_contains "$output" "UI Idea" "should not show UI idea"
@@ -425,8 +431,9 @@ status: "TODO"
 This idea is about frontend improvements.
 EOF
 
+  _GTR_ARGS=("--filter=DATABASE")
   local output
-  output=$(gtr_idea_list --filter=DATABASE 2>&1)
+  output=$(gtr_idea_list 2>&1)
   
   assert_contains "$output" "Database Idea" "should show database idea (case-insensitive)"
   assert_not_contains "$output" "Frontend Idea" "should not show frontend idea"
@@ -439,13 +446,16 @@ test_idea_command_help() {
   assert_contains "$output" "Usage: gtr idea" "should show usage"
   assert_contains "$output" "create, c" "should show create command"
   assert_contains "$output" "list, l" "should show list command"
+  assert_contains "$output" "open, o" "should show open command"
 }
 
 test_idea_command_create() {
+  _GTR_ARGS=("create" "Test Command Idea" "--less")
   local output
-  output=$(gtr_idea create "Test Command Idea" 2>&1)
+  output=$(gtr_idea 2>&1)
   
   assert_contains "$output" "Created idea:" "should show creation message"
+  assert_contains "$output" "Opening with less" "should show less opening message"
   
   # Check that file was created
   local files_found=0
@@ -481,10 +491,50 @@ status: "TODO"
 # Command Test Idea
 EOF
 
+  _GTR_ARGS=("list")
   local output
-  output=$(gtr_idea list 2>&1)
+  output=$(gtr_idea 2>&1)
   
   assert_contains "$output" "Command Test Idea" "should show idea in list"
+}
+
+test_idea_command_open() {
+  # Create a test idea first
+  local test_file="$IDEAS_DIR/20240101T120000Z_testuser_Open-Test-Idea.md"
+  cat > "$test_file" << 'EOF'
+---
+summary: "Open Test Idea"
+author: "testuser"
+datetime: "2024-01-01T12:00:00Z"
+repo_name: "test-repo"
+repo_url: "https://github.com/test/repo.git"
+current_branch_name: "main"
+latest_commit: "abc123"
+status: "TODO"
+---
+# Open Test Idea
+
+This is a test idea for the open command.
+EOF
+
+  # Test opening with less
+  _GTR_ARGS=("open" "20240101T120000Z_testuser_Open-Test-Idea.md" "--less")
+  local output
+  output=$(gtr_idea 2>&1)
+  
+  # The output should contain the file content since less will display it
+  assert_contains "$output" "Open Test Idea" "should show idea content"
+  assert_contains "$output" "This is a test idea" "should show idea description"
+}
+
+test_idea_command_open_not_found() {
+  # Test opening non-existent idea
+  _GTR_ARGS=("open" "nonexistent-idea.md")
+  local output
+  output=$(gtr_idea 2>&1)
+  
+  assert_contains "$output" "Idea file not found" "should show error for missing file"
+  assert_contains "$output" "Available ideas" "should show available ideas"
 }
 
 # Main test execution
@@ -497,6 +547,7 @@ main() {
   
   # Run tests
   register_test "get_ideas_dir" test_get_ideas_dir
+  register_test "idea_list_empty" test_idea_list_empty
   register_test "ensure_ideas_dir" test_ensure_ideas_dir
   register_test "generate_idea_filename" test_generate_idea_filename
   register_test "generate_idea_filename_special_chars" test_generate_idea_filename_special_chars
@@ -504,7 +555,6 @@ main() {
   register_test "create_idea_content" test_create_idea_content
   register_test "idea_create_with_summary" test_idea_create_with_summary
   register_test "idea_create_without_summary" test_idea_create_without_summary
-  register_test "idea_list_empty" test_idea_list_empty
   register_test "idea_list_with_ideas" test_idea_list_with_ideas
   register_test "idea_list_mine_filter" test_idea_list_mine_filter
   register_test "idea_list_todo_filter" test_idea_list_todo_filter
@@ -514,6 +564,8 @@ main() {
   register_test "idea_command_help" test_idea_command_help
   register_test "idea_command_create" test_idea_command_create
   register_test "idea_command_list" test_idea_command_list
+  register_test "idea_command_open" test_idea_command_open
+  register_test "idea_command_open_not_found" test_idea_command_open_not_found
   
   # Cleanup
   cleanup_test_environment

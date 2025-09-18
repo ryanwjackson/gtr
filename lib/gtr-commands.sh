@@ -417,15 +417,29 @@ gtr_doctor() {
 
 gtr_idea_create() {
   local summary=""
+  local use_less="false"
   
-  # Check if summary was provided as argument
-  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
-    summary="${_GTR_ARGS[0]}"
-  fi
+  # Parse arguments - first non-option argument is the summary
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --less)
+        use_less="true"
+        ;;
+      --*)
+        # Skip other options
+        ;;
+      *)
+        if [[ -z "$summary" ]]; then
+          summary="$arg"
+        fi
+        ;;
+    esac
+  done
   
   # If no summary provided, prompt for it
   if [[ -z "$summary" ]]; then
-    summary=$(_gtr_ask_user "Enter idea summary: " "")
+    printf "Enter idea summary: "
+    read -r summary
     if [[ -z "$summary" ]]; then
       echo "❌ No summary provided. Idea creation cancelled."
       return 1
@@ -454,13 +468,18 @@ gtr_idea_create() {
     echo "✅ Created idea: $filename"
     echo "📁 Location: $file_path"
     
-    # Open in editor if configured
-    local editor="${_GTR_EDITOR:-cursor}"
-    if command -v "$editor" >/dev/null 2>&1; then
-      echo "🔧 Opening in $editor..."
-      "$editor" "$file_path"
+    # Open in editor or less
+    if [[ "$use_less" == "true" ]]; then
+      echo "🔧 Opening with less..."
+      less "$file_path"
     else
-      echo "💡 Open with: $editor \"$file_path\""
+      local editor="${_GTR_EDITOR:-cursor}"
+      if command -v "$editor" >/dev/null 2>&1; then
+        echo "🔧 Opening in $editor..."
+        "$editor" "$file_path"
+      else
+        echo "💡 Open with: $editor \"$file_path\""
+      fi
     fi
   else
     echo "❌ Failed to create idea file: $file_path"
@@ -473,7 +492,7 @@ gtr_idea_list() {
   local filter_args=()
   for arg in "${_GTR_ARGS[@]}"; do
     case "$arg" in
-      --mine|--todo|--status=*)
+      --mine|--todo|--status=*|--filter=*)
         filter_args+=("$arg")
         ;;
     esac
@@ -481,6 +500,63 @@ gtr_idea_list() {
   
   # List ideas with filters
   _gtr_list_ideas "${filter_args[@]}"
+}
+
+gtr_idea_open() {
+  local idea_file=""
+  local use_less="false"
+  
+  # Parse arguments
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --less)
+        use_less="true"
+        ;;
+      --*)
+        # Skip other options
+        ;;
+      *)
+        if [[ -z "$idea_file" ]]; then
+          idea_file="$arg"
+        fi
+        ;;
+    esac
+  done
+  
+  if [[ -z "$idea_file" ]]; then
+    echo "Usage: gtr idea open <idea-file> [--less]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --less               Open with less instead of editor"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  gtr idea open 20240101T120000Z_user_My-Idea.md"
+    echo "  gtr idea open 20240101T120000Z_user_My-Idea.md --less"
+    return 1
+  fi
+  
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local full_path="$ideas_dir/$idea_file"
+  
+  if [[ ! -f "$full_path" ]]; then
+    echo "❌ Idea file not found: $idea_file"
+    echo "💡 Available ideas:"
+    gtr_idea_list
+    return 1
+  fi
+  
+  if [[ "$use_less" == "true" ]]; then
+    less "$full_path"
+  else
+    local editor="${_GTR_EDITOR:-cursor}"
+    if command -v "$editor" >/dev/null 2>&1; then
+      "$editor" "$full_path"
+    else
+      echo "❌ Editor not found: $editor"
+      echo "💡 Open with: $editor \"$full_path\""
+      return 1
+    fi
+  fi
 }
 
 gtr_idea() {
@@ -498,17 +574,25 @@ gtr_idea() {
     l|list)
       gtr_idea_list
       ;;
+    o|open)
+      gtr_idea_open
+      ;;
     "")
-      echo "Usage: gtr idea {create|list} [OPTIONS]"
+      echo "Usage: gtr idea {create|list|open} [OPTIONS]"
       echo ""
       echo "COMMANDS:"
       echo "  create, c [summary]  Create a new idea file"
       echo "  list, l             List ideas with optional filters"
+      echo "  open, o <file>      Open an idea file"
       echo ""
       echo "OPTIONS for list:"
       echo "  --mine              Show only your ideas"
       echo "  --todo              Show only TODO status ideas"
       echo "  --status=STATUS     Show only ideas with specific status"
+      echo "  --filter=CONTENT    Filter by content (case-insensitive)"
+      echo ""
+      echo "OPTIONS for open:"
+      echo "  --less              Open with less instead of editor"
       echo ""
       echo "EXAMPLES:"
       echo "  gtr idea create                    # Prompt for summary"
@@ -517,6 +601,9 @@ gtr_idea() {
       echo "  gtr idea list --mine               # List your ideas"
       echo "  gtr idea list --todo               # List TODO ideas"
       echo "  gtr idea list --status=IN_PROGRESS # List in-progress ideas"
+      echo "  gtr idea list --filter=performance # Filter by content"
+      echo "  gtr idea open idea.md              # Open idea file"
+      echo "  gtr idea open idea.md --less       # Open with less"
       return 1
       ;;
     *)

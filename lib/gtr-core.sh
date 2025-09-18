@@ -308,7 +308,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
-    idea, i {create|list}         Manage idea files
+    idea, i {create|list|open}    Manage idea files
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -344,9 +344,12 @@ EXAMPLES:
     # Manage ideas
     gtr idea create                        # Create new idea (prompt for summary)
     gtr idea create 'New feature'          # Create idea with summary
+    gtr idea create 'New feature' --less   # Create idea and open with less
     gtr idea list                          # List all ideas
     gtr idea list --mine                   # List your ideas
     gtr idea list --todo                   # List TODO ideas
+    gtr idea open idea.md                  # Open idea file
+    gtr idea open idea.md --less           # Open idea with less
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model
@@ -423,8 +426,8 @@ _gtr_generate_idea_filename() {
   local username="${_GTR_USERNAME:-$(whoami)}"
   local datetime=$(date -u +"%Y%m%dT%H%M%SZ")
   
-  # Sanitize summary for filename (replace spaces with hyphens, remove special chars)
-  local sanitized_summary=$(echo "$summary" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+  # Sanitize summary for filename (replace spaces with hyphens, replace special chars with dashes)
+  local sanitized_summary=$(echo "$summary" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/^-\|-$//g')
   
   # Limit length to avoid filesystem issues
   if [[ ${#sanitized_summary} -gt 50 ]]; then
@@ -498,6 +501,7 @@ _gtr_list_ideas() {
   local show_mine="false"
   local show_todo="false"
   local status_filter=""
+  local content_filter=""
   local username="${_GTR_USERNAME:-$(whoami)}"
   
   # Parse arguments
@@ -511,6 +515,9 @@ _gtr_list_ideas() {
         ;;
       --status=*)
         status_filter="${arg#*=}"
+        ;;
+      --filter=*)
+        content_filter="${arg#*=}"
         ;;
     esac
   done
@@ -590,6 +597,27 @@ _gtr_list_ideas() {
     
     if [[ -n "$status_filter" && "$status" != "$status_filter" ]]; then
       should_show=false
+    fi
+    
+    if [[ -n "$content_filter" ]]; then
+      # Check if content filter matches summary or file content
+      local content_match=false
+      local filter_lower=$(echo "$content_filter" | tr '[:upper:]' '[:lower:]')
+      local filter_upper=$(echo "$content_filter" | tr '[:lower:]' '[:upper:]')
+      local summary_lower=$(echo "$summary" | tr '[:upper:]' '[:lower:]')
+      
+      if [[ "$summary" == *"$content_filter"* ]] || [[ "$summary_lower" == *"$filter_lower"* ]] || [[ "$summary" == *"$filter_upper"* ]]; then
+        content_match=true
+      else
+        # Check file content for the filter
+        if grep -qi "$content_filter" "$file" 2>/dev/null; then
+          content_match=true
+        fi
+      fi
+      
+      if [[ "$content_match" == "false" ]]; then
+        should_show=false
+      fi
     fi
     
     if [[ "$should_show" == "true" ]]; then
