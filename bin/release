@@ -307,6 +307,14 @@ if [[ "$is_worktree" == "true" && "$current_branch" != "HEAD" && "$current_branc
       echo "📋 PR #$pr_number already exists for this branch (state: $pr_state)"
       echo "🔗 View existing PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
       
+      # Push any committed changes to update the existing PR
+      echo "🔄 Pushing any committed changes to update existing PR #$pr_number"
+      if git push "$remote" "$current_branch" 2>/dev/null; then
+        echo "✅ Successfully pushed changes to PR #$pr_number"
+      else
+        echo "⚠️  No new changes to push or push failed for PR #$pr_number"
+      fi
+      
       # Check if auto-merge is already enabled
       auto_merge_status=$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest.enabledAt' 2>/dev/null)
       if [[ "$auto_merge_status" == "null" || -z "$auto_merge_status" ]]; then
