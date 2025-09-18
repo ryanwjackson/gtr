@@ -1,6 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Function to get the latest version tag from git
+get_current_version() {
+  # Get the latest tag that looks like a version (vX.Y.Z)
+  local latest_tag
+  latest_tag=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
+  if [[ -z "$latest_tag" ]]; then
+    echo "v0.0.0"  # Default if no version tags exist
+  else
+    echo "$latest_tag"
+  fi
+}
+
+# Function to bump version based on type
+bump_version() {
+  local current_version="$1"
+  local bump_type="$2"
+
+  # Remove 'v' prefix for processing
+  local version_numbers="${current_version#v}"
+
+  # Split into major.minor.patch
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "$version_numbers"
+
+  case "$bump_type" in
+    major)
+      major=$((major + 1))
+      minor=0
+      patch=0
+      ;;
+    minor)
+      minor=$((minor + 1))
+      patch=0
+      ;;
+    patch)
+      patch=$((patch + 1))
+      ;;
+    *)
+      echo "Error: Invalid bump type: $bump_type" >&2
+      exit 1
+      ;;
+  esac
+
+  echo "v$major.$minor.$patch"
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bin/release [options] <version>
@@ -111,52 +157,6 @@ else
     exit 1
   fi
 fi
-
-# Function to get the latest version tag from git
-get_current_version() {
-  # Get the latest tag that looks like a version (vX.Y.Z)
-  local latest_tag
-  latest_tag=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
-  if [[ -z "$latest_tag" ]]; then
-    echo "v0.0.0"  # Default if no version tags exist
-  else
-    echo "$latest_tag"
-  fi
-}
-
-# Function to bump version based on type
-bump_version() {
-  local current_version="$1"
-  local bump_type="$2"
-
-  # Remove 'v' prefix for processing
-  local version_numbers="${current_version#v}"
-
-  # Split into major.minor.patch
-  local major minor patch
-  IFS='.' read -r major minor patch <<< "$version_numbers"
-
-  case "$bump_type" in
-    major)
-      major=$((major + 1))
-      minor=0
-      patch=0
-      ;;
-    minor)
-      minor=$((minor + 1))
-      patch=0
-      ;;
-    patch)
-      patch=$((patch + 1))
-      ;;
-    *)
-      echo "Error: Invalid bump type: $bump_type" >&2
-      exit 1
-      ;;
-  esac
-
-  echo "v$major.$minor.$patch"
-}
 
 notes="${message:-$tag}"
 
