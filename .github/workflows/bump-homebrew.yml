@@ -1,12 +1,12 @@
 name: Bump Homebrew Formula
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to bump (e.g., v0.1.0). Leave empty to use the release tag."
+        description: "Tag to bump (e.g., v0.1.0). Leave empty to use the latest release tag."
         required: false
         type: string
       dry_run:
@@ -33,6 +33,66 @@ jobs:
       - name: Checkout (handy if you later read files)
         uses: actions/checkout@v4
 
+      - name: Check for release tag in commit
+        id: check_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # For workflow_dispatch, use the provided tag or find latest release
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+              TAG="${{ github.event.inputs.tag }}"
+              echo "Using manually specified tag: $TAG"
+            else
+              # Find the latest release tag
+              TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+              if [[ -z "$TAG" ]]; then
+                echo "No releases found and no tag specified"
+                exit 1
+              fi
+              echo "Using latest release tag: $TAG"
+            fi
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # For push events, check if the commit contains a release tag
+          echo "Checking if commit contains a release tag..."
+          
+          # Get the commit message and check for version tags
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
+          
+          # Look for version tags in the commit message (e.g., "Release v1.2.3" or "v1.2.3")
+          if echo "$COMMIT_MSG" | grep -E '\bv[0-9]+\.[0-9]+\.[0-9]+\b' >/dev/null; then
+            # Extract the version tag from commit message
+            TAG=$(echo "$COMMIT_MSG" | grep -oE '\bv[0-9]+\.[0-9]+\.[0-9]+\b' | head -1)
+            echo "Found release tag in commit message: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            # Check if any tags were pushed in this commit
+            TAGS=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+            if [[ -n "$TAGS" ]]; then
+              TAG=$(echo "$TAGS" | head -1)
+              echo "Found release tag pushed with commit: $TAG"
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No release tag found in commit or pushed tags"
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Skip if no release tag found
+        if: steps.check_release.outputs.should_run != 'true'
+        run: |
+          echo "No release tag found in this commit. Skipping Homebrew bump."
+          echo "To trigger a release, include a version tag (e.g., v1.2.3) in your commit message or push a release tag."
+          exit 0
+
       - name: Ensure GH CLI is authenticated
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
@@ -43,12 +103,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Prefer manual input on workflow_dispatch; else use the tag from the release ref
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.tag }}" ]]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          # Use the tag detected in the previous step
+          TAG="${{ steps.check_release.outputs.tag }}"
           REPO="${{ github.repository }}"  # should be ryanwjackson/gtr
           TARBALL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
           echo "Tarball: $TARBALL"
