@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: bin/release [options] <version>
+
+Create a GitHub Release for the given version.
+
+Arguments:
+  version              Semver like 1.2.3 or v1.2.3. The leading "v" will be added if missing.
+
+Options:
+  -m, --message <msg>  Release notes/title message. Defaults to the normalized version string.
+  -h, --help           Show this help.
+
+Environment:
+  Requires GitHub CLI (gh) authenticated to your repo (gh auth status).
+
+Behavior:
+  - Normalizes the tag to start with 'v' (e.g., 1.2.3 -> v1.2.3).
+  - Creates an annotated git tag locally if missing, pushes it to the remote.
+  - Creates a GitHub Release for the tag if it does not already exist.
+
+Examples:
+  # Simple release with default notes (the tag itself)
+  bin/release 0.1.2
+
+  # Explicit tag format is also accepted
+  bin/release v0.1.2
+
+  # Provide custom release notes/title
+  bin/release 0.1.2 -m "Bugfixes and improvements"
+USAGE
+}
+
+message=""
+version=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--message)
+      shift
+      [[ $# -gt 0 ]] || { echo "Error: --message requires an argument" >&2; exit 1; }
+      message="$1"
+      shift
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    --)
+      shift; break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage; exit 1
+      ;;
+    *)
+      if [[ -z "$version" ]]; then
+        version="$1"
+        shift
+      else
+        echo "Unexpected extra argument: $1" >&2
+        usage; exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$version" ]]; then
+  echo "Error: version is required" >&2
+  usage
+  exit 1
+fi
+
+# Normalize version to start with 'v'
+if [[ "$version" != v* ]]; then
+  tag="v$version"
+else
+  tag="$version"
+fi
+
+# Basic semver validation (vMAJOR.MINOR.PATCH)
+if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Error: version must be semantic version (e.g., 1.2.3 or v1.2.3)" >&2
+  exit 1
+fi
+
+notes="${message:-$tag}"
+
+# Ensure gh is available and authenticated
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: GitHub CLI 'gh' not found. Install from https://cli.github.com/" >&2
+  exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+  echo "Error: gh is not authenticated. Run 'gh auth login' or set GH_TOKEN." >&2
+  exit 1
+fi
+
+# Ensure git is available
+if ! command -v git >/dev/null 2>&1; then
+  echo "Error: git not found" >&2
+  exit 1
+fi
+
+# Require a clean working tree (no uncommitted or untracked changes)
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Error: working tree has uncommitted changes. Commit or stash before releasing." >&2
+  git status --short || true
+  exit 1
+fi
+
+# Determine default remote
+remote="origin"
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+  # Fallback to first remote, if any
+  if first_remote=$(git remote | head -n1); then
+    remote="$first_remote"
+  else
+    echo "Error: no git remote configured" >&2
+    exit 1
+  fi
+fi
+
+# Create annotated tag if it does not exist
+if git rev-parse "$tag" >/dev/null 2>&1; then
+  echo "Tag $tag already exists"
+else
+  echo "Creating annotated tag $tag"
+  git tag -a "$tag" -m "$notes"
+  echo "Pushing tag $tag to $remote"
+  git push "$remote" "$tag"
+fi
+
+# If tag exists locally but may not be pushed, attempt push (no-op if already present)
+if ! git ls-remote --tags "$remote" "$tag" | grep -q "$tag"; then
+  echo "Tag $tag not found on remote $remote; pushing"
+  git push "$remote" "$tag"
+fi
+
+# Create the GitHub Release if it doesn't already exist
+if gh release view "$tag" >/dev/null 2>&1; then
+  echo "Release $tag already exists"
+else
+  echo "Creating GitHub Release $tag"
+  gh release create "$tag" --title "$tag" --notes "$notes"
+  echo "Release $tag created"
+fi
+
+echo "Done."
+
+

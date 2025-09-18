@@ -124,3 +124,24 @@ MIT
 ### Versioning
 - `gtr --version` (or `-v`) prints the installed release tag as `gtr version <tag>`.
 - The version is injected at build time for Homebrew releases. Running from a Git checkout (no CI replacement) prints `gtr version unknown`.
+
+### Releasing
+Use the helper to tag and create a GitHub Release:
+
+```bash
+# Basic: adds leading v automatically and uses the tag as notes/title
+bin/release 0.1.2
+
+# Or pass the tag explicitly
+bin/release v0.1.2
+
+# Custom message for release notes/title
+bin/release 0.1.2 -m "Bugfixes and improvements"
+
+# Help
+bin/release --help
+```
+
+Notes:
+- Requires GitHub CLI `gh` authenticated to this repo (`gh auth status`).
+- Creates an annotated git tag if missing, pushes it, then creates the Release if absent.
