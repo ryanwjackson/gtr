@@ -3,6 +3,18 @@ name: Bump Homebrew Formula
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to bump (e.g., v0.1.0). Leave empty to use the release tag."
+        required: false
+        type: string
+      dry_run:
+        description: "If true, open a PR with a -dryrun suffix for safe testing."
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 permissions:
   contents: read
@@ -18,7 +30,7 @@ jobs:
       FORMULA_PATH: ${{ vars.FORMULA_PATH || 'Formula/gtr.rb' }}
       # ------------------------------------------------------------
     steps:
-      - name: Checkout (not strictly needed, but handy if you later read files)
+      - name: Checkout (handy if you later read files)
         uses: actions/checkout@v4
 
       - name: Ensure GH CLI is authenticated
@@ -31,15 +43,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          REPO="${{ github.repository }}"  # ryanwjackson/gtr
+          # Prefer manual input on workflow_dispatch; else use the tag from the release ref
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          REPO="${{ github.repository }}"  # should be ryanwjackson/gtr
           TARBALL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
           echo "Tarball: $TARBALL"
 
           curl -L "$TARBALL" -o source.tar.gz
           SHA256="$(shasum -a 256 source.tar.gz | awk '{print $1}')"
 
-          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256"   >> "$GITHUB_OUTPUT"
 
@@ -52,8 +69,11 @@ jobs:
           gh repo clone "$TAP_OWNER/$TAP_REPO" tap
           cd tap
 
-          # Create bump branch
-          BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}"
+          # Determine dry-run suffix and branch name
+          DRY="${{ github.event.inputs.dry_run || 'false' }}"
+          SUFFIX=""
+          if [[ "$DRY" == "true" ]]; then SUFFIX="-dryrun"; fi
+          BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}$SUFFIX"
           git checkout -b "$BRANCH"
 
           # Configure git identity (can also set via repo variables)
@@ -67,12 +87,19 @@ jobs:
           git --no-pager diff -- "$FORMULA_PATH" || true
 
           git add "$FORMULA_PATH"
-          git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}"
+          git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}$SUFFIX"
           git push -u origin "$BRANCH"
 
-          # Open or reuse PR
+          # Open a PR targeting the tap's default branch
           gh pr create \
-            --title "Bump gtr to ${{ steps.meta.outputs.tag }}" \
-            --body  "Automated bump: update URL and SHA256 for tag ${{ steps.meta.outputs.tag }}" \
-            --fill || \
-          gh pr view --web
+            --title "Bump gtr to ${{ steps.meta.outputs.tag }}$SUFFIX" \
+            --body  "Automated bump (dry_run=${DRY}): update URL and SHA256 for ${{ steps.meta.outputs.tag }}." \
+            --fill
+
+      # Optional: uncomment to lint the formula in CI for extra safety
+      # - name: Brew audit (optional)
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     brew update
+      #     brew audit --strict --new-formula "tap/$FORMULA_PATH"
