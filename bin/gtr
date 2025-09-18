@@ -716,6 +716,10 @@ _gtr_parse_global_flags() {
           return 1
         fi
         ;;
+      --prefix=*)
+        prefix="${1#*=}"
+        shift
+        ;;
       --editor)
         if [[ -n "$2" ]]; then
           editor="$2"
@@ -725,6 +729,10 @@ _gtr_parse_global_flags() {
           return 1
         fi
         ;;
+      --editor=*)
+        editor="${1#*=}"
+        shift
+        ;;
       --username)
         if [[ -n "$2" ]]; then
           username="$2"
@@ -733,6 +741,10 @@ _gtr_parse_global_flags() {
           echo "Error: --username requires a value"
           return 1
         fi
+        ;;
+      --username=*)
+        username="${1#*=}"
+        shift
         ;;
       --no-open)
         no_open=true
@@ -751,6 +763,10 @@ _gtr_parse_global_flags() {
           return 1
         fi
         ;;
+      --base=*)
+        base_branch="${1#*=}"
+        shift
+        ;;
       --untracked)
         if [[ -n "$2" ]]; then
           untracked="$2"
@@ -759,6 +775,31 @@ _gtr_parse_global_flags() {
           echo "Error: --untracked requires a value (true or false)"
           return 1
         fi
+        ;;
+      --untracked=*)
+        untracked="${1#*=}"
+        shift
+        ;;
+      --uncommitted)
+        echo "Error: --uncommitted flag has been renamed to --untracked"
+        echo "Please use --untracked instead"
+        return 1
+        ;;
+      --uncommitted=*)
+        echo "Error: --uncommitted flag has been renamed to --untracked"
+        echo "Please use --untracked instead"
+        return 1
+        ;;
+      --force|--dry-run)
+        # These are command-specific flags, pass them through
+        args+=("$1")
+        shift
+        ;;
+      --*)
+        echo "Error: Unknown option '$1'"
+        echo "Valid global options: --prefix, --username, --editor, --no-open, --no-install, --base, --untracked"
+        echo "Command-specific options: --force, --dry-run (for rm command)"
+        return 1
         ;;
       *)
         args+=("$1")
@@ -884,28 +925,84 @@ _gtr_create_worktree() {
     return 1
   fi
   
-  # Handle untracked changes if requested
-  local temp_commit=""
+  # Handle uncommitted changes if requested
+  local uncommitted_files=()
   if [[ "$untracked" == "true" ]]; then
-    # Check if there are untracked files
-    local untracked_files=$(git ls-files --others --exclude-standard)
-    if [[ -n "$untracked_files" ]]; then
-      echo "📁 Including untracked changes in worktree..."
+    # Check if there are uncommitted changes (modified, added, staged, or new files)
+    local uncommitted_status=$(git status --porcelain)
+    if [[ -n "$uncommitted_status" ]]; then
+      echo "📁 Including uncommitted changes in worktree..."
       
-      # Create a temporary commit with untracked files
-      git add .
-      temp_commit=$(git commit -m "temp: include untracked changes for worktree" --no-verify)
-      
-      if [[ $? -ne 0 ]]; then
-        echo "❌ Failed to create temporary commit for untracked changes"
-        return 1
-      fi
+      # Collect files to copy and log each file that will be moved
+      while IFS= read -r line; do
+        # Skip empty lines
+        if [[ -z "$line" ]]; then
+          continue
+        fi
+        
+        local status_code="${line:0:2}"
+        local file_path="${line:3}"
+        
+        # Handle renamed files (R  old -> new)
+        if [[ "$status_code" =~ ^R ]]; then
+          file_path=$(echo "$file_path" | sed 's/.*-> //')
+        fi
+        
+        # Skip if no file path
+        if [[ -z "$file_path" ]]; then
+          continue
+        fi
+        
+        # Determine the type of change
+        local change_type=""
+        case "$status_code" in
+          "??") change_type="new file" ;;
+          " M") change_type="modified" ;;
+          "M ") change_type="staged" ;;
+          "MM") change_type="modified and staged" ;;
+          "A ") change_type="added" ;;
+          "AM") change_type="added and modified" ;;
+          "D ") change_type="deleted" ;;
+          " D") change_type="deleted (staged)" ;;
+          "R ") change_type="renamed" ;;
+          "C ") change_type="copied" ;;
+          *) change_type="changed" ;;
+        esac
+        
+        echo "  📄 $change_type: $file_path"
+        uncommitted_files+=("$file_path")
+      done <<< "$uncommitted_status"
     fi
   fi
   
   # Create worktree and branch from the specified base
   if git worktree add "$base/$name" -b "$branch_name" "$base_branch"; then
     echo "✅ Created worktree '$name' based on $base_branch"
+
+    # Copy uncommitted files to the worktree if requested
+    if [[ ${#uncommitted_files[@]} -gt 0 ]]; then
+      echo "📋 Copying uncommitted changes to worktree..."
+      
+      for file_path in "${uncommitted_files[@]}"; do
+        local source_file="$main_worktree/$file_path"
+        local target_file="$base/$name/$file_path"
+        local target_dir=$(dirname "$target_file")
+        
+        # Create target directory if it doesn't exist
+        mkdir -p "$target_dir" 2>/dev/null
+        
+        # Copy the file
+        if [[ -f "$source_file" ]]; then
+          cp "$source_file" "$target_file" 2>/dev/null
+          echo "  📄 Copied: $file_path"
+        elif [[ -d "$source_file" ]]; then
+          cp -r "$source_file" "$target_file" 2>/dev/null
+          echo "  📁 Copied directory: $file_path"
+        fi
+      done
+      
+      echo "  ℹ️  Files copied to worktree. Git states (staged/modified) will need to be recreated manually."
+    fi
 
     # Copy local files from main worktree to new worktree (only if we have files to copy)
     local patterns=($(_gtr_read_config "$main_worktree"))
@@ -916,13 +1013,6 @@ _gtr_create_worktree() {
     # Run pnpm commands if not disabled
     _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
     
-    # Clean up temporary commit if it was created
-    if [[ -n "$temp_commit" ]]; then
-      echo "🧹 Cleaning up temporary commit..."
-      git reset --soft HEAD~1
-      git reset HEAD .
-    fi
-    
     if [[ "$_GTR_NO_OPEN" == "false" ]]; then
       echo "Opening '$base/$name' with $_GTR_EDITOR"
       $_GTR_EDITOR "$base/$name"
@@ -932,13 +1022,6 @@ _gtr_create_worktree() {
     return 0
   else
     echo "Failed to create worktree '$name'"
-    
-    # Clean up temporary commit if worktree creation failed
-    if [[ -n "$temp_commit" ]]; then
-      echo "🧹 Cleaning up temporary commit..."
-      git reset --soft HEAD~1
-      git reset HEAD .
-    fi
     return 1
   fi
 }

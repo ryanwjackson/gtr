@@ -20,6 +20,9 @@ prefix=claude
 # Whether to open editor after creating worktree
 auto_open=true
 
+# Whether to include uncommitted changes in worktree (default: true)
+uncommitted=true
+
 # Base directory for worktrees (relative to main repo or absolute path)
 # worktree_base=../worktrees
 

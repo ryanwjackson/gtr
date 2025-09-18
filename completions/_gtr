@@ -41,7 +41,7 @@ _gtr() {
     '--no-open[Do not open editor]'
     '--no-install[Skip pnpm commands]'
     '--base[Base branch]:branch:_guard "[^-]*" branch'
-    '--untracked[Include untracked changes]:untracked:(true false)'
+    '--uncommitted[Include uncommitted changes]:uncommitted:(true false)'
   )
 
   local curcontext="$curcontext" state line
