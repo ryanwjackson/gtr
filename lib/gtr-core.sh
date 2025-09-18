@@ -446,7 +446,8 @@ _gtr_generate_idea_filename() {
   # Then replace any remaining non-alphanumeric characters (except dots, underscores, hyphens) with dashes
   sanitized_summary=$(echo "$sanitized_summary" | sed 's/[^a-zA-Z0-9._-]/-/g')
   # Only clean up leading/trailing dashes, preserve consecutive dashes in the middle
-  sanitized_summary=$(echo "$sanitized_summary" | sed 's/^-\|-$//g')
+  # Use separate commands for leading and trailing dashes to avoid sed version differences
+  sanitized_summary=$(echo "$sanitized_summary" | sed 's/^-\+//' | sed 's/-\+$//')
   
   # Debug output for CI troubleshooting
   if [[ "${GTR_DEBUG:-}" == "1" ]]; then
