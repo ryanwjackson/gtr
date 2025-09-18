@@ -669,8 +669,10 @@ _gtr_parse_global_flags() {
   local base_branch=""
   local untracked=""
   local args=()
-  
-  
+  local extra_args=()
+  local parsing_extra=false
+
+
   # Read default values from config
   local config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
   local config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
@@ -680,7 +682,7 @@ _gtr_parse_global_flags() {
   
   # Set defaults from config
   editor="$config_editor"
-  
+
   # Set worktree base if configured
   if [[ -n "$config_worktree_base" ]]; then
     if [[ "$config_worktree_base" == /* ]]; then
@@ -691,9 +693,29 @@ _gtr_parse_global_flags() {
       export GTR_BASE_DIR="$main_worktree/$config_worktree_base"
     fi
   fi
-  
+
   while [[ $# -gt 0 ]]; do
+    if [[ "$parsing_extra" == "true" ]]; then
+      # Everything after -- goes to extra_args
+      extra_args+=("$1")
+      shift
+      continue
+    fi
+
     case "$1" in
+      --)
+        parsing_extra=true
+        shift
+        ;;
+      --prefix)
+        if [[ -n "$2" ]]; then
+          prefix="$2"
+          shift 2
+        else
+          echo "Error: --prefix requires a value"
+          return 1
+        fi
+        ;;
       --editor)
         if [[ -n "$2" ]]; then
           editor="$2"
@@ -744,12 +766,12 @@ _gtr_parse_global_flags() {
         ;;
     esac
   done
-  
+
   # Apply config-based defaults if not overridden by flags
   if [[ "$no_open" == "false" && "$config_auto_open" == "false" ]]; then
     no_open=true
   fi
-  
+
   if [[ "$no_install" == "false" && "$config_run_pnpm" == "false" ]]; then
     no_install=true
   fi
@@ -759,7 +781,7 @@ _gtr_parse_global_flags() {
     untracked="$config_untracked"
   fi
   
-  
+
   # Export variables for use in other functions
   export _GTR_EDITOR="$editor"
   export _GTR_NO_OPEN="$no_open"
@@ -768,9 +790,74 @@ _gtr_parse_global_flags() {
   export _GTR_BASE_BRANCH="$base_branch"
   export _GTR_UNTRACKED="$untracked"
   
-  # Set _GTR_ARGS in the global scope
+  # Set _GTR_ARGS and _GTR_EXTRA_ARGS in the global scope
   _GTR_ARGS=("${args[@]}")
+  _GTR_EXTRA_ARGS=("${extra_args[@]}")
   export _GTR_ARGS
+  export _GTR_EXTRA_ARGS
+}
+
+_gtr_find_or_create_worktree() {
+  local name="$1"
+  local should_open="${2:-false}"
+  local base="$(_gtr_get_base_dir)"
+  local dir="$base/$name"
+
+  # If worktree already exists, return success
+  if [[ -d "$dir" ]]; then
+    echo "$dir"
+    return 0
+  fi
+
+  # Check if configuration exists (either global or local)
+  if ! _gtr_is_initialized; then
+    echo "❌ No gtr configuration found" >&2
+    echo "   Run 'gtr init' to create a global configuration (~/.gtr/config)" >&2
+    echo "   or create a local configuration in this repository (.gtr/config)" >&2
+    return 1
+  fi
+
+  # Prompt to create worktree
+  local reply
+  reply=$(_gtr_ask_user "Worktree '$name' doesn't exist. Create it now? [y/N] " "N")
+  case "$reply" in
+    [yY]|[yY][eE][sS])
+      local branch_name="$(_gtr_get_worktree_branch_name "$name")"
+
+      # Check if branch already exists
+      if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+        echo "Branch '$branch_name' already exists. Cannot create worktree." >&2
+        return 1
+      fi
+
+      local base_branch="${_GTR_BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+      echo "Creating worktree '$name' based on $base_branch…"
+
+      if git worktree add "$dir" -b "$branch_name" "$base_branch"; then
+        echo "✅ Created worktree '$name'"
+
+        # Copy local files from main worktree to new worktree (only if we have files to copy)
+        local main_worktree="$(_gtr_get_main_worktree)"
+        local patterns=($(_gtr_read_config "$main_worktree"))
+        if [[ ${#patterns[@]} -gt 0 ]]; then
+          _gtr_copy_local_files "$main_worktree" "$dir" "true" "$main_worktree"
+        fi
+
+        # Run pnpm commands if not disabled
+        _gtr_run_pnpm_commands "$dir" "${_GTR_NO_INSTALL:-false}"
+
+        echo "$dir"
+        return 0
+      else
+        echo "git worktree add failed" >&2
+        return 1
+      fi
+      ;;
+    *)
+      echo "Aborted." >&2
+      return 1
+      ;;
+  esac
 }
 
 _gtr_create_worktree() {
@@ -819,10 +906,13 @@ _gtr_create_worktree() {
   # Create worktree and branch from the specified base
   if git worktree add "$base/$name" -b "$branch_name" "$base_branch"; then
     echo "✅ Created worktree '$name' based on $base_branch"
-    
-    # Copy local files from main worktree to new worktree
-    _gtr_copy_local_files "$main_worktree" "$base/$name" "true" "$main_worktree"
-    
+
+    # Copy local files from main worktree to new worktree (only if we have files to copy)
+    local patterns=($(_gtr_read_config "$main_worktree"))
+    if [[ ${#patterns[@]} -gt 0 ]]; then
+      _gtr_copy_local_files "$main_worktree" "$base/$name" "true" "$main_worktree"
+    fi
+
     # Run pnpm commands if not disabled
     _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
     
@@ -1225,40 +1315,52 @@ gtr_list() {
 
 gtr_claude() {
   local name=""
+  local claude_args=()
   if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
-    name="${_GTR_ARGS[1]}"
+    name="${_GTR_ARGS[0]}"
   fi
-  local base="$(_gtr_get_base_dir)"
-  local dir="$base/$name"
+  if [[ ${#_GTR_EXTRA_ARGS[@]} -gt 0 ]]; then
+    claude_args=("${_GTR_EXTRA_ARGS[@]}")
+  fi
 
   if [[ -z "$name" ]]; then
-    echo "Usage: gtr claude <name>"
+    echo "Usage: gtr claude <name> [-- <claude_args>...]"
     return 1
   fi
 
-  if [ ! -d "$dir" ]; then
-    # Prompt in a shell-agnostic way
-    local reply
-    reply=$(_gtr_ask_user "Worktree '$name' doesn't exist. Create it now? [y/N] " "N")
-    case "$reply" in
-      [yY]|[yY][eE][sS])
-        local branch_name="$(_gtr_get_worktree_branch_name "$name")"
-        
-        # Check if branch already exists
-        if git show-ref --verify --quiet "refs/heads/$branch_name"; then
-          echo "Branch '$branch_name' already exists. Cannot create worktree."
-          return 1
-        fi
-        
-        echo "Creating worktree '$name'…"
-        git worktree add "$dir" -b "$branch_name" || { echo "git worktree add failed"; return 1; }
-        ;;
-      *)
-        echo "Aborted."; return 1;;
-    esac
+  local dir
+  dir=$(_gtr_find_or_create_worktree "$name") || return 1
+
+  if [[ ${#claude_args[@]} -gt 0 ]]; then
+    ( cd "$dir" && claude "${claude_args[@]}" )
+  else
+    ( cd "$dir" && claude )
+  fi
+}
+
+gtr_cursor() {
+  local name=""
+  local cursor_args=()
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    name="${_GTR_ARGS[0]}"
+  fi
+  if [[ ${#_GTR_EXTRA_ARGS[@]} -gt 0 ]]; then
+    cursor_args=("${_GTR_EXTRA_ARGS[@]}")
   fi
 
-  ( cd "$dir" && claude )
+  if [[ -z "$name" ]]; then
+    echo "Usage: gtr cursor <name> [-- <cursor_args>...]"
+    return 1
+  fi
+
+  local dir
+  dir=$(_gtr_find_or_create_worktree "$name") || return 1
+
+  if [[ ${#cursor_args[@]} -gt 0 ]]; then
+    ( cd "$dir" && cursor "${cursor_args[@]}" )
+  else
+    ( cd "$dir" && cursor )
+  fi
 }
 
 gtr_prune() {
@@ -1949,7 +2051,8 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
-    claude <name>                 Run claude in worktree directory
+    claude <name> [-- <args>...]  Run claude in worktree directory
+    cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
     doctor [name]                 Check worktree for missing local files
     init                          Initialize gtr configuration
@@ -1978,6 +2081,12 @@ EXAMPLES:
     gtr list                               # List all worktrees
     gtr cd feature0                        # Navigate to worktree
     gtr claude feature0                    # Run claude in worktree
+    gtr cursor feature0                    # Run cursor in worktree
+
+    # Run tools with arguments
+    gtr claude feature0 -- --model sonnet  # Run claude with specific model
+    gtr cursor feature0 -- --new-window    # Run cursor with new window
+    gtr claude feature0 -- --help          # Pass --help to claude
 
     # Cleanup
     gtr rm feature0                        # Remove worktree (with confirmation)
@@ -2006,6 +2115,7 @@ FEATURES:
     • Smart branch naming with worktrees/repo_name/username/name pattern
     • Safe worktree removal with merge detection
     • Health checking with automatic fixing (recursive .env*local* detection)
+    • Pass arguments to claude/cursor using -- delimiter
 
 For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
 EOF
@@ -2029,7 +2139,7 @@ gtr() {
     return 0
   fi
   
-  shift || { echo "Usage: gtr {create|rm|cd|claude|prune|doctor|init} [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
+  shift || { echo "Usage: gtr {create|rm|cd|claude|cursor|prune|doctor|init} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
 
   # Check for command-specific flags before parsing global flags
   local fix_mode="false"
@@ -2084,6 +2194,9 @@ gtr() {
     claude)
       gtr_claude
       ;;
+    cursor)
+      gtr_cursor
+      ;;
     prune)
       gtr_prune
       ;;
@@ -2094,7 +2207,7 @@ gtr() {
       gtr_init
       ;;
     *)
-      echo "Unknown sub-command: $cmd (use create, rm, cd, claude, prune, doctor, init)"; return 1;;
+      echo "Unknown sub-command: $cmd (use create, rm, cd, claude, cursor, prune, doctor, init)"; return 1;;
   esac
 }
 
