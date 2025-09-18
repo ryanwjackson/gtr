@@ -2798,7 +2798,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
-    idea, i [summary|list|open]   Manage idea files (default: create)
+    idea, i {create|list|open}    Manage idea files
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -2832,14 +2832,14 @@ EXAMPLES:
     gtr cursor feature0                    # Run cursor in worktree
 
     # Manage ideas
-    gtr idea                               # Create new idea (prompt for summary)
-    gtr idea 'New feature'                 # Create idea with summary
+    gtr idea create                        # Create new idea (prompt for summary)
+    gtr idea create 'New feature'          # Create idea with summary
+    gtr idea create 'New feature' --less   # Create idea and open with less
     gtr idea list                          # List all ideas
     gtr idea list --mine                   # List your ideas
     gtr idea list --todo                   # List TODO ideas
-    gtr idea list --filter=bug             # Search for 'bug' in titles/content
-    gtr idea open                          # Interactive idea opener
-    gtr idea open --mine                   # Interactive opener (your ideas only)
+    gtr idea open idea.md                  # Open idea file
+    gtr idea open idea.md --less           # Open idea with less
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model
