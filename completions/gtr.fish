@@ -25,6 +25,7 @@ complete -c gtr -n '__fish_use_subcommand' -a list -d 'List worktrees'
 complete -c gtr -n '__fish_use_subcommand' -a ls -d 'Alias for list'
 complete -c gtr -n '__fish_use_subcommand' -a l -d 'Alias for list'
 complete -c gtr -n '__fish_use_subcommand' -a claude -d 'Run claude in worktree'
+complete -c gtr -n '__fish_use_subcommand' -a cursor -d 'Run cursor in worktree'
 complete -c gtr -n '__fish_use_subcommand' -a prune -d 'Clean up merged worktrees'
 complete -c gtr -n '__fish_use_subcommand' -a doctor -d 'Check/fix local files in worktree'
 complete -c gtr -n '__fish_use_subcommand' -a init -d 'Initialize gtr configuration'
@@ -53,7 +54,7 @@ complete -c gtr -n '__fish_seen_subcommand_from init' -l doctor -d 'Check config
 complete -c gtr -n '__fish_seen_subcommand_from init' -l fix -d 'Auto-add missing files to config'
 
 # Name completion for worktree-taking commands
-for sc in create c remove rm cd claude doctor
+for sc in create c remove rm cd claude cursor doctor
   complete -c gtr -n "__fish_seen_subcommand_from $sc" -a '(__gtr_worktree_names)'
 end
 

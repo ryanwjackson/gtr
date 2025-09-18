@@ -17,7 +17,7 @@ _gtr_list_worktrees() {
 }
 
 _gtr_subcommands() {
-  echo "create c remove rm cd list ls l claude prune doctor init --help -h"
+  echo "create c remove rm cd list ls l claude cursor prune doctor init --help -h"
 }
 
 _gtr_global_opts() {
@@ -74,7 +74,7 @@ _gtr_completion() {
 
   # Name completion for commands that take worktree names
   case "$subcmd" in
-    c|create|rm|remove|cd|claude|doctor)
+    c|create|rm|remove|cd|claude|cursor|doctor)
       COMPREPLY=( $(compgen -W "$(_gtr_list_worktrees)" -- "$cur") )
       return 0
       ;;
