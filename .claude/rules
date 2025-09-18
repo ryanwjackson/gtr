@@ -1,0 +1,112 @@
+# gtr Development Rules for Claude Code
+
+## Project Structure
+This project uses a modular architecture with the following key directories:
+
+- `bin/` - Entry points (gtr-new is the modular version, gtr is legacy)
+- `lib/` - Core modules in dependency order
+- `test/` - Unit tests for each module
+- `test-helpers/` - Testing framework and utilities
+
+## Development Guidelines
+
+### 1. Module-First Development
+- All new functionality should be added to appropriate modules in `lib/`
+- Never modify `bin/gtr` (legacy script) - use `bin/gtr-new` for testing
+- Understand module dependencies before making changes
+- Each module should have a single, clear responsibility
+
+### 2. Testing Requirements
+- **ALWAYS run tests before and after changes**: `./test/test-runner.sh`
+- Write tests for new functionality before implementing
+- Update existing tests when modifying behavior
+- Ensure both modular (`bin/gtr-new`) and legacy (`bin/gtr`) versions work identically
+
+### 3. Module Dependencies (Critical)
+Modules must be sourced in this exact order:
+1. `gtr-core.sh` (no dependencies)
+2. `gtr-ui.sh` (no dependencies)
+3. `gtr-config.sh` (depends on gtr-ui.sh)
+4. `gtr-files.sh` (depends on gtr-config.sh, gtr-ui.sh)
+5. `gtr-git.sh` (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh)
+6. `gtr-commands.sh` (depends on all above)
+
+### 4. Function Organization
+- **Core utilities**: `lib/gtr-core.sh` (version, help, repo detection)
+- **User interaction**: `lib/gtr-ui.sh` (_gtr_ask_user)
+- **Configuration**: `lib/gtr-config.sh` (all config reading/writing)
+- **File operations**: `lib/gtr-files.sh` (copying, diffing, merging)
+- **Git operations**: `lib/gtr-git.sh` (worktree management)
+- **Commands**: `lib/gtr-commands.sh` (public gtr_* functions)
+
+### 5. Testing Commands
+```bash
+# Essential test commands
+./test/test-runner.sh                    # Run all tests
+./test/test-runner.sh core              # Test core functions
+./test/test-runner.sh config            # Test configuration
+./test/test-runner.sh files             # Test file operations
+
+# Individual module tests
+bash test/test-core.sh
+bash test/test-config.sh
+bash test/test-files.sh
+
+# Functionality validation
+./bin/gtr-new --version                 # Test modular version
+./bin/gtr-new --help                    # Test help display
+```
+
+### 6. Code Style
+- Maintain existing bash style and conventions
+- Use `_gtr_` prefix for private functions
+- Use `gtr_` prefix for public command functions
+- Include function documentation in module headers
+- Preserve all existing functionality exactly
+
+### 7. Before Making Changes
+1. Read `REFACTORING_SUMMARY.md` to understand the architecture
+2. Run `./test/test-runner.sh` to ensure current state is clean
+3. Identify which module(s) need modification
+4. Write/update tests for your changes
+5. Implement changes maintaining module boundaries
+
+### 8. After Making Changes
+1. Run `./test/test-runner.sh` to verify all tests pass
+2. Test both `./bin/gtr-new` and `./bin/gtr` for compatibility
+3. Update documentation if needed
+4. Ensure no new dependencies are introduced between modules
+
+### 9. Common Tasks
+
+#### Adding a new command:
+1. Add public function to `lib/gtr-commands.sh`
+2. Add command dispatch in `bin/gtr-new` main function
+3. Write tests in appropriate test file
+4. Update help text in `lib/gtr-core.sh`
+
+#### Modifying configuration:
+1. Update functions in `lib/gtr-config.sh`
+2. Update tests in `test/test-config.sh`
+3. Test configuration validation
+
+#### Adding file operations:
+1. Add functions to `lib/gtr-files.sh`
+2. Update tests in `test/test-files.sh`
+3. Ensure pattern matching works correctly
+
+### 10. Emergency Procedures
+If the modular version breaks:
+- The legacy `bin/gtr` should always work as fallback
+- Check module sourcing order in `bin/gtr-new`
+- Verify all required modules exist in `lib/`
+- Run individual module tests to isolate issues
+
+## Testing Philosophy
+- Tests are not optional - they prevent regressions
+- Mock git operations to enable isolated testing
+- Cover edge cases and error conditions
+- Maintain >80% test coverage of critical functions
+
+## Compatibility Promise
+Both `bin/gtr` and `bin/gtr-new` must work identically. Any change that breaks this compatibility should be rejected.

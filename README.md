@@ -2,6 +2,8 @@
 
 gtr is a lightweight helper around git worktrees that speeds up parallel development. It creates per-feature worktrees, copies local-only files (like .env*local*), can run pnpm setup, and provides safe pruning and a doctor to keep worktrees healthy.
 
+> **🏗️ Modular Architecture**: gtr now features a modular design with separate modules for different concerns, comprehensive testing, and improved maintainability. See [REFACTORING_SUMMARY.md](./REFACTORING_SUMMARY.md) for details.
+
 ### Features
 - **Fast worktree creation**: `gtr create feature1` (optionally from `--base main`)
 - **Copies local files**: `.env*local*`, `.claude/`, `.anthropic/` by default
@@ -25,21 +27,30 @@ brew upgrade gtr
 ```
 
 #### Manual installation
-1) Put `bin/gtr` somewhere on your PATH, or symlink it:
+
+**Option 1: Modular version (recommended for development)**
 ```bash
+# Use the new modular entry point
+chmod +x bin/gtr-new
+ln -sf "$PWD/bin/gtr-new" /usr/local/bin/gtr  # or ~/.local/bin
+```
+
+**Option 2: Original monolithic version**
+```bash
+# Use the original single-file version
 chmod +x bin/gtr
 ln -sf "$PWD/bin/gtr" /usr/local/bin/gtr  # or ~/.local/bin
 ```
 
-2) If you prefer to source as a shell function (recommended for speed and interactivity):
+**Option 3: Source as shell function (fastest)**
 ```bash
-# Bash/Zsh
-source /path/to/bin/gtr
+# Bash/Zsh - works with either version
+source /path/to/bin/gtr-new  # or bin/gtr
 # Optionally expose a wrapper so `gtr` works in subshells
-command -v gtr >/dev/null || alias gtr='bash -lc "source /path/to/bin/gtr; gtr \"$@\""'
+command -v gtr >/dev/null || alias gtr='bash -lc "source /path/to/bin/gtr-new; gtr \"$@\""'
 ```
 
-3) Initialize per-repo configuration (run from any worktree/branch):
+**Initialize configuration:**
 ```bash
 gtr init
 ```
@@ -131,6 +142,72 @@ INI-like sections in your main repository:
 ### Requirements
 - `git` 2.37+
 - Optional: `pnpm` for Node repos, `diff3` for better merges
+
+### Development
+
+#### Architecture
+gtr uses a modular architecture with the following structure:
+
+```
+gtr/
+├── bin/
+│   ├── gtr          # Original monolithic script (2300+ lines)
+│   └── gtr-new      # New modular entry point (105 lines)
+├── lib/             # Core library modules
+│   ├── gtr-core.sh     # Core utilities and constants
+│   ├── gtr-ui.sh       # User interaction functions
+│   ├── gtr-config.sh   # Configuration management
+│   ├── gtr-files.sh    # File operations
+│   ├── gtr-git.sh      # Git operations
+│   └── gtr-commands.sh # Public command implementations
+├── test/            # Unit tests
+│   ├── test-core.sh
+│   ├── test-config.sh
+│   ├── test-files.sh
+│   └── test-runner.sh
+└── test-helpers/    # Testing framework
+    ├── test-utils.sh   # Assertion framework
+    └── mock-git.sh     # Git mocking system
+```
+
+#### Testing
+Run the comprehensive test suite to ensure code quality:
+
+```bash
+# Run all tests
+./test/test-runner.sh
+
+# Run specific test suite
+./test/test-runner.sh core    # Core functions
+./test/test-runner.sh config  # Configuration
+./test/test-runner.sh files   # File operations
+
+# List available tests
+./test/test-runner.sh --list
+
+# Run individual test files
+bash test/test-core.sh
+bash test/test-config.sh
+bash test/test-files.sh
+```
+
+#### Contributing
+When modifying gtr:
+
+1. **Understand the module structure** - See [REFACTORING_SUMMARY.md](./REFACTORING_SUMMARY.md)
+2. **Write tests first** - Add tests for new functionality
+3. **Test thoroughly** - Run `./test/test-runner.sh` before submitting
+4. **Maintain compatibility** - Ensure both `gtr` and `gtr-new` work identically
+5. **Update documentation** - Keep README and module comments current
+
+#### Module Dependencies
+Modules must be sourced in dependency order:
+1. `gtr-core.sh` (no dependencies)
+2. `gtr-ui.sh` (no dependencies)
+3. `gtr-config.sh` (depends on gtr-ui.sh)
+4. `gtr-files.sh` (depends on gtr-config.sh, gtr-ui.sh)
+5. `gtr-git.sh` (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh)
+6. `gtr-commands.sh` (depends on all above)
 
 ### License
 MIT

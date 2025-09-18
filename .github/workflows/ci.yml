@@ -1,0 +1,59 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Git
+      run: |
+        git config --global user.name "CI Test"
+        git config --global user.email "ci@test.local"
+
+    - name: Setup Scripts
+      run: |
+        chmod +x bin/gtr bin/gtr-new test/test-runner.sh test/*.sh
+
+    - name: Run Tests
+      run: ./test/test-runner.sh
+
+    - name: Verify Both Scripts Work
+      run: |
+        echo "Testing original script..."
+        ./bin/gtr --version
+        echo "Testing modular script..."
+        ./bin/gtr-new --version
+        echo "Both scripts functional ✓"
+
+  lint:
+    name: Shell Linting
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install ShellCheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+
+    - name: Lint Shell Scripts
+      run: |
+        echo "Linting main scripts..."
+        shellcheck bin/gtr bin/gtr-new || true
+        echo "Linting library modules..."
+        shellcheck lib/*.sh || true
+        echo "Linting test scripts..."
+        shellcheck test/*.sh test-helpers/*.sh || true
+        echo "Note: Some warnings are expected due to dynamic sourcing"

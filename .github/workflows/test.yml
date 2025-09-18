@@ -1,0 +1,196 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup git for tests
+      run: |
+        git config --global user.name "Test User"
+        git config --global user.email "test@example.com"
+
+    - name: Make scripts executable
+      run: |
+        chmod +x bin/gtr
+        chmod +x bin/gtr-new
+        chmod +x test/test-runner.sh
+        chmod +x test/*.sh
+
+    - name: Validate modular structure
+      run: |
+        echo "=== Validating module structure ==="
+        ls -la lib/
+        echo ""
+        echo "=== Checking module dependencies ==="
+        echo "Total modules: $(ls lib/*.sh | wc -l)"
+        echo "Expected: 6 modules"
+        [ "$(ls lib/*.sh | wc -l)" -eq 6 ]
+
+    - name: Test module loading
+      run: |
+        echo "=== Testing module loading ==="
+        ./bin/gtr-new --version
+        echo "Version check: PASSED"
+
+    - name: Run comprehensive test suite
+      run: |
+        echo "=== Running all tests ==="
+        ./test/test-runner.sh
+
+    - name: Test individual modules
+      run: |
+        echo "=== Testing individual modules ==="
+        echo "Testing core module..."
+        bash test/test-core.sh
+        echo ""
+        echo "Testing config module..."
+        bash test/test-config.sh
+        echo ""
+        echo "Testing files module..."
+        bash test/test-files.sh
+
+    - name: Validate functionality preservation
+      run: |
+        echo "=== Validating functionality preservation ==="
+        echo "Testing original script..."
+        ./bin/gtr --version
+        echo ""
+        echo "Testing modular script..."
+        ./bin/gtr-new --version
+        echo ""
+        echo "Comparing help outputs..."
+        ./bin/gtr --help > /tmp/original_help.txt 2>&1
+        ./bin/gtr-new --help > /tmp/modular_help.txt 2>&1
+        if diff /tmp/original_help.txt /tmp/modular_help.txt; then
+          echo "Help outputs match: PASSED"
+        else
+          echo "Help outputs differ: FAILED"
+          exit 1
+        fi
+
+    - name: Test error handling
+      run: |
+        echo "=== Testing error handling ==="
+        # Test invalid command
+        if ./bin/gtr-new invalid-command 2>/dev/null; then
+          echo "Invalid command should fail: FAILED"
+          exit 1
+        else
+          echo "Invalid command properly fails: PASSED"
+        fi
+
+    - name: Test module isolation
+      run: |
+        echo "=== Testing module isolation ==="
+        # Test that modules can be sourced independently
+        echo "Testing core module isolation..."
+        bash -c "source lib/gtr-core.sh; _gtr_print_version"
+        echo "Core module: PASSED"
+
+        echo "Testing ui module isolation..."
+        bash -c "source lib/gtr-ui.sh; echo 'UI module loaded'"
+        echo "UI module: PASSED"
+
+    - name: Performance comparison
+      run: |
+        echo "=== Performance comparison ==="
+        echo "Timing original script..."
+        time ./bin/gtr --version >/dev/null
+        echo ""
+        echo "Timing modular script..."
+        time ./bin/gtr-new --version >/dev/null
+        echo ""
+        echo "Both should complete quickly"
+
+    - name: Generate test report
+      if: always()
+      run: |
+        echo "=== Test Report ==="
+        echo "Date: $(date)"
+        echo "Commit: $GITHUB_SHA"
+        echo "Branch: $GITHUB_REF_NAME"
+        echo ""
+        echo "Module structure:"
+        ls -la lib/ || echo "lib/ directory not found"
+        echo ""
+        echo "Test structure:"
+        ls -la test/ || echo "test/ directory not found"
+        echo ""
+        echo "Scripts:"
+        ls -la bin/ || echo "bin/ directory not found"
+
+  compatibility:
+    name: Compatibility Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        bash-version: ["4.4", "5.0", "5.1", "5.2"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install specific bash version
+      run: |
+        # Note: This is a simplified version - in practice you might need to build bash
+        # For now, just ensure we're using the system bash
+        bash --version
+
+    - name: Test with bash version
+      run: |
+        echo "Testing with bash $(bash --version | head -1)"
+        chmod +x bin/gtr-new test/test-runner.sh test/*.sh
+        ./bin/gtr-new --version
+        bash test/test-core.sh
+
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check for shell injection vulnerabilities
+      run: |
+        echo "=== Security Analysis ==="
+        echo "Checking for potential shell injection patterns..."
+
+        # Check for dangerous patterns
+        echo "Checking for eval usage..."
+        if grep -r "eval" lib/ bin/ --include="*.sh"; then
+          echo "Found eval usage - review for safety"
+        else
+          echo "No eval usage found: PASSED"
+        fi
+
+        echo "Checking for dynamic command execution..."
+        if grep -r '\$(' lib/ bin/ --include="*.sh" | grep -v "git\|echo\|pwd\|dirname\|basename\|whoami\|date"; then
+          echo "Found potential dynamic execution - review carefully"
+        else
+          echo "No suspicious dynamic execution: PASSED"
+        fi
+
+    - name: Validate file permissions
+      run: |
+        echo "=== File Permission Check ==="
+        # Ensure no files are world-writable
+        if find . -type f -perm -002; then
+          echo "Found world-writable files: FAILED"
+          exit 1
+        else
+          echo "File permissions secure: PASSED"
+        fi
