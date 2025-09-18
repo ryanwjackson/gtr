@@ -1,0 +1,78 @@
+name: Bump Homebrew Formula
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: macos-latest
+    env:
+      # ---- Customize these if your tap or formula path differ ----
+      TAP_OWNER: ${{ vars.TAP_OWNER || 'ryanwjackson' }}
+      TAP_REPO:  ${{ vars.TAP_REPO  || 'homebrew-tap' }}
+      FORMULA_PATH: ${{ vars.FORMULA_PATH || 'Formula/gtr.rb' }}
+      # ------------------------------------------------------------
+    steps:
+      - name: Checkout (not strictly needed, but handy if you later read files)
+        uses: actions/checkout@v4
+
+      - name: Ensure GH CLI is authenticated
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
+        run: gh auth status
+
+      - name: Compute tarball URL and SHA256
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          REPO="${{ github.repository }}"  # ryanwjackson/gtr
+          TARBALL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          echo "Tarball: $TARBALL"
+
+          curl -L "$TARBALL" -o source.tar.gz
+          SHA256="$(shasum -a 256 source.tar.gz | awk '{print $1}')"
+
+          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256"   >> "$GITHUB_OUTPUT"
+
+      - name: Clone tap and bump formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh repo clone "$TAP_OWNER/$TAP_REPO" tap
+          cd tap
+
+          # Create bump branch
+          BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}"
+          git checkout -b "$BRANCH"
+
+          # Configure git identity (can also set via repo variables)
+          git config user.name  "${{ vars.GIT_USER_NAME  || 'github-actions[bot]' }}"
+          git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
+
+          # In-place edit with Perl (portable across BSD/GNU)
+          perl -0777 -pe 's|^  url ".*"|  url "'${{ steps.meta.outputs.tarball }}'"|m; s|^  sha256 ".*"|  sha256 "'${{ steps.meta.outputs.sha256 }}'"|m' -i "$FORMULA_PATH"
+
+          echo "Diff:"
+          git --no-pager diff -- "$FORMULA_PATH" || true
+
+          git add "$FORMULA_PATH"
+          git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}"
+          git push -u origin "$BRANCH"
+
+          # Open or reuse PR
+          gh pr create \
+            --title "Bump gtr to ${{ steps.meta.outputs.tag }}" \
+            --body  "Automated bump: update URL and SHA256 for tag ${{ steps.meta.outputs.tag }}" \
+            --fill || \
+          gh pr view --web
