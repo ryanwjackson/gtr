@@ -427,7 +427,13 @@ _gtr_generate_idea_filename() {
   local datetime=$(date -u +"%Y%m%dT%H%M%SZ")
   
   # Sanitize summary for filename (replace spaces with hyphens, replace special chars with dashes)
-  local sanitized_summary=$(echo "$summary" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/^-\|-$//g')
+  # Use a more explicit approach to avoid locale/version issues with sed
+  # First replace spaces with hyphens
+  local sanitized_summary=$(echo "$summary" | sed 's/ /-/g')
+  # Then replace any remaining non-alphanumeric characters (except dots, underscores, hyphens) with dashes
+  sanitized_summary=$(echo "$sanitized_summary" | sed 's/[^a-zA-Z0-9._-]/-/g')
+  # Only clean up leading/trailing dashes, preserve consecutive dashes in the middle
+  sanitized_summary=$(echo "$sanitized_summary" | sed 's/^-\|-$//g')
   
   # Limit length to avoid filesystem issues
   if [[ ${#sanitized_summary} -gt 50 ]]; then
