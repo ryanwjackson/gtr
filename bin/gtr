@@ -3,6 +3,7 @@
 # gtr - Git worktree helper
 # ref: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
 #
+#
 # Examples
 # --------
 #   gtr create feature0          # add ~/code/worktrees/feature0 (based on current branch)
