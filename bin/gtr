@@ -5,7 +5,7 @@
 #
 # Examples
 # --------
-#   gtr create feature0          # add ~/code/worktrees/feature0 (based on current branch)
+#   gtr create feature0          # add ~/Documents/dev/worktrees/repo-name/feature0 (based on current branch)
 #   gtr create feat1 feat2       # add two worktrees at once
 #   gtr create feature0 --base main  # create worktree based on main branch
 #   gtr create feature0 --no-install # create worktree without running pnpm commands
@@ -68,7 +68,8 @@ _gtr_print_version() {
 
 # Private helper functions (prefixed with _gtr_)
 _gtr_get_base_dir() {
-  echo "${GTR_BASE_DIR:-$HOME/Documents/dev/worktrees}"
+  local repo_name="$(_gtr_get_repo_name)"
+  echo "${GTR_BASE_DIR:-$HOME/Documents/dev/worktrees/$repo_name}"
 }
 
 # Helper function for interactive user input
