@@ -117,6 +117,9 @@ jobs:
           git config user.name  "${{ vars.GIT_USER_NAME  || 'github-actions[bot]' }}"
           git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
 
+          # Configure git to use GH CLI credentials for HTTPS pushes
+          gh auth setup-git
+
           # In-place edit with Perl (portable across BSD/GNU)
           NEW_URL="${{ steps.pack.outputs.asset_url }}"
           NEW_SHA="${{ steps.pack.outputs.sha256 }}"
