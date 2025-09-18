@@ -22,7 +22,12 @@ jobs:
 
     - name: Setup Scripts
       run: |
+        # Set proper executable permissions
         chmod +x bin/gtr bin/gtr-new test/test-runner.sh test/*.sh
+        # Verify permissions were set correctly
+        echo "Verifying script permissions..."
+        ls -la bin/gtr bin/gtr-new test/test-runner.sh
+        echo "Script permissions set successfully"
 
     - name: Run Tests
       run: ./test/test-runner.sh

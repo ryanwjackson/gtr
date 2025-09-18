@@ -174,13 +174,13 @@ gtr/
 Run the comprehensive test suite to ensure code quality:
 
 ```bash
-# Run all tests
+# Run all tests (23 tests across 3 suites)
 ./test/test-runner.sh
 
 # Run specific test suite
-./test/test-runner.sh core    # Core functions
-./test/test-runner.sh config  # Configuration
-./test/test-runner.sh files   # File operations
+./test/test-runner.sh core    # Core functions (7 tests)
+./test/test-runner.sh config  # Configuration (8 tests)
+./test/test-runner.sh files   # File operations (8 tests)
 
 # List available tests
 ./test/test-runner.sh --list
@@ -189,7 +189,12 @@ Run the comprehensive test suite to ensure code quality:
 bash test/test-core.sh
 bash test/test-config.sh
 bash test/test-files.sh
+
+# Simulate GitHub Actions locally
+./.github/test-local.sh
 ```
+
+**Continuous Integration**: Tests run automatically on GitHub Actions for all pushes and pull requests. See `.github/workflows/ci.yml` for the main CI pipeline.
 
 #### Contributing
 When modifying gtr:

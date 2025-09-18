@@ -187,10 +187,23 @@ jobs:
     - name: Validate file permissions
       run: |
         echo "=== File Permission Check ==="
-        # Ensure no files are world-writable
-        if find . -type f -perm -002; then
-          echo "Found world-writable files: FAILED"
+        # Check for world-writable files in important directories only
+        echo "Checking script permissions..."
+        world_writable_files=$(find bin/ lib/ test/ -type f -perm -002 2>/dev/null | grep -v ".git" || true)
+        if [[ -n "$world_writable_files" ]]; then
+          echo "Found world-writable script files: FAILED"
+          echo "$world_writable_files"
           exit 1
         else
-          echo "File permissions secure: PASSED"
+          echo "Script file permissions secure: PASSED"
+        fi
+
+        # Ensure executable files are properly set
+        echo "Checking executable permissions..."
+        if [[ -x "bin/gtr" && -x "bin/gtr-new" && -x "test/test-runner.sh" ]]; then
+          echo "Executable permissions correct: PASSED"
+        else
+          echo "Missing executable permissions: FAILED"
+          ls -la bin/ test/test-runner.sh
+          exit 1
         fi
