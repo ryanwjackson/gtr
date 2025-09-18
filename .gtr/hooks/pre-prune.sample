@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# gtr pre-prune hook
+# This hook runs BEFORE starting the prune operation
+#
+# Arguments:
+#   $1 - base branch for pruning
+#   $2 - dry_run flag ("true" or "false")
+#   $3 - force flag ("true" or "false")
+#
+# Exit codes:
+#   0 - continue with prune operation
+#   non-zero - abort prune operation
+
+BASE_BRANCH="$1"
+DRY_RUN="$2"
+FORCE="$3"
+
+echo "🧹 Pre-prune hook: base=$BASE_BRANCH"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🔍 [DRY RUN] Would run pre-prune checks"
+    exit 0
+fi
+
+# Example: Ensure base branch is up to date
+# echo "🔄 Ensuring base branch is up to date..."
+# git fetch origin "$BASE_BRANCH" >/dev/null 2>&1
+# if ! git merge-base --is-ancestor "origin/$BASE_BRANCH" "$BASE_BRANCH" 2>/dev/null; then
+#     echo "⚠️  Base branch $BASE_BRANCH is behind origin/$BASE_BRANCH"
+#     if [[ "$FORCE" != "true" ]]; then
+#         echo "❌ Aborting prune (use --force to override)"
+#         echo "   Consider running: git checkout $BASE_BRANCH && git pull"
+#         exit 1
+#     fi
+# fi
+
+# Example: Check for active development processes
+# echo "🔍 Checking for active development processes..."
+# if pgrep -f "npm.*dev\|yarn.*dev\|pnpm.*dev" >/dev/null; then
+#     echo "⚠️  Active development servers detected"
+#     if [[ "$FORCE" != "true" ]]; then
+#         echo "❌ Aborting prune to avoid disrupting development (use --force to override)"
+#         exit 1
+#     fi
+# fi
+
+# Example: Backup important files from merged worktrees
+# echo "💾 Creating backup of merged worktrees..."
+# BACKUP_DIR="$HOME/.gtr/backups/prune-$(date +%Y%m%d-%H%M%S)"
+# mkdir -p "$BACKUP_DIR"
+# git worktree list --porcelain | while read -r line; do
+#     if [[ "$line" =~ ^worktree ]]; then
+#         WORKTREE_PATH="${line#worktree }"
+#         if [[ -f "$WORKTREE_PATH/.env.local" ]]; then
+#             WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+#             cp "$WORKTREE_PATH/.env.local" "$BACKUP_DIR/${WORKTREE_NAME}.env.local" 2>/dev/null || true
+#         fi
+#     fi
+# done
+
+echo "✅ Pre-prune checks passed"
+exit 0

@@ -180,7 +180,7 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-# Require a clean working tree (no uncommitted or untracked changes)
+# Require a clean working tree (no uncommitted changes)
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: working tree has uncommitted changes. Commit or stash before releasing." >&2
   git status --short || true

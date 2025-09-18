@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# gtr post-prune hook
+# This hook runs AFTER completing the prune operation
+#
+# Arguments:
+#   $1 - base branch used for pruning
+#   $2 - dry_run flag ("true" or "false")
+#   $3 - force flag ("true" or "false")
+#   $4 - number of worktrees removed
+#
+# Exit codes:
+#   0 - success
+#   non-zero - failure (pruning already completed, but hook failed)
+
+BASE_BRANCH="$1"
+DRY_RUN="$2"
+FORCE="$3"
+REMOVED_COUNT="${4:-0}"
+
+echo "🧹 Post-prune hook: removed $REMOVED_COUNT worktrees"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🔍 [DRY RUN] Would run post-prune cleanup"
+    exit 0
+fi
+
+# Example: Clean up orphaned development databases
+# echo "🗄️  Cleaning up orphaned development databases..."
+# for db in $(psql -lqt | cut -d \| -f 1 | grep -E '^dev_' | tr -d ' '); do
+#     # Check if there's still a worktree for this database
+#     WORKTREE_NAME="${db#dev_}"
+#     WORKTREE_NAME="${WORKTREE_NAME//_/-}"  # Convert underscores back to hyphens
+#     if ! git worktree list | grep -q "$WORKTREE_NAME"; then
+#         echo "  Dropping orphaned database: $db"
+#         dropdb "$db" 2>/dev/null || echo "    ⚠️  Failed to drop $db"
+#     fi
+# done
+
+# Example: Clean up docker containers for removed worktrees
+# echo "🐳 Cleaning up orphaned docker containers..."
+# for container in $(docker ps -a --format "table {{.Names}}" | grep "^gtr-"); do
+#     WORKTREE_NAME="${container#gtr-}"
+#     if ! git worktree list | grep -q "$WORKTREE_NAME"; then
+#         echo "  Removing orphaned container: $container"
+#         docker stop "$container" 2>/dev/null || true
+#         docker rm "$container" 2>/dev/null || true
+#     fi
+# done
+
+# Example: Clean up temporary directories
+# echo "🧹 Cleaning up temporary directories..."
+# for tmpdir in /tmp/gtr-*; do
+#     if [[ -d "$tmpdir" ]]; then
+#         WORKTREE_NAME="${tmpdir#/tmp/gtr-}"
+#         if ! git worktree list | grep -q "$WORKTREE_NAME"; then
+#             echo "  Removing orphaned temp dir: $tmpdir"
+#             rm -rf "$tmpdir" 2>/dev/null || echo "    ⚠️  Failed to remove $tmpdir"
+#         fi
+#     fi
+# done
+
+# Example: Update project documentation
+# echo "📝 Updating project documentation..."
+# if [[ "$REMOVED_COUNT" -gt 0 ]]; then
+#     DOCS_FILE="docs/development.md"
+#     if [[ -f "$DOCS_FILE" ]]; then
+#         echo "## Active Worktrees" > temp_active_worktrees.md
+#         git worktree list --porcelain | while read -r line; do
+#             if [[ "$line" =~ ^worktree ]]; then
+#                 WORKTREE_PATH="${line#worktree }"
+#                 WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+#                 echo "- $WORKTREE_NAME: $WORKTREE_PATH" >> temp_active_worktrees.md
+#             fi
+#         done
+#         # Update the documentation file (this is a simplified example)
+#         # In practice, you'd want more sophisticated documentation updates
+#     fi
+# fi
+
+# Example: Generate cleanup report
+# if [[ "$REMOVED_COUNT" -gt 0 ]]; then
+#     echo "📊 Generating cleanup report..."
+#     REPORT_FILE="$HOME/.gtr/reports/prune-$(date +%Y%m%d-%H%M%S).log"
+#     mkdir -p "$(dirname "$REPORT_FILE")"
+#     {
+#         echo "Prune operation completed at $(date)"
+#         echo "Base branch: $BASE_BRANCH"
+#         echo "Worktrees removed: $REMOVED_COUNT"
+#         echo "Force mode: $FORCE"
+#         echo ""
+#         echo "Remaining worktrees:"
+#         git worktree list
+#     } > "$REPORT_FILE"
+#     echo "  Report saved to: $REPORT_FILE"
+# fi
+
+# Example: Notify team members
+# if [[ "$REMOVED_COUNT" -gt 0 ]]; then
+#     echo "📧 Notifying team about cleanup..."
+#     if command -v notify-send >/dev/null 2>&1; then
+#         notify-send "gtr" "Pruned $REMOVED_COUNT merged worktrees"
+#     fi
+# fi
+
+echo "✅ Post-prune cleanup completed"
+exit 0

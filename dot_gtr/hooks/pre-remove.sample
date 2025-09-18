@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# gtr pre-remove hook
+# This hook runs BEFORE removing a worktree
+#
+# Arguments:
+#   $1 - worktree name
+#   $2 - worktree path
+#   $3 - branch name
+#   $4 - force flag ("true" or "false")
+#   $5 - dry_run flag ("true" or "false")
+#
+# Exit codes:
+#   0 - continue with worktree removal
+#   non-zero - abort worktree removal
+
+WORKTREE_NAME="$1"
+WORKTREE_PATH="$2"
+BRANCH_NAME="$3"
+FORCE="$4"
+DRY_RUN="$5"
+
+echo "🗑️  Pre-remove hook: $WORKTREE_NAME"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🔍 [DRY RUN] Would run pre-remove checks"
+    exit 0
+fi
+
+# Example: Check for uncommitted changes
+# if [[ -d "$WORKTREE_PATH" ]]; then
+#     if ! git -C "$WORKTREE_PATH" diff --quiet; then
+#         echo "⚠️  Worktree has uncommitted changes"
+#         if [[ "$FORCE" != "true" ]]; then
+#             echo "❌ Aborting removal (use --force to override)"
+#             exit 1
+#         fi
+#     fi
+# fi
+
+# Example: Check for uncommitted files
+# if [[ -d "$WORKTREE_PATH" ]]; then
+#     UNCOMMITTED_FILES=$(git -C "$WORKTREE_PATH" status --porcelain | wc -l)
+#     if [[ "$UNCOMMITTED_FILES" -gt 0 ]]; then
+#         echo "⚠️  Worktree has $UNCOMMITTED_FILES uncommitted files"
+#         if [[ "$FORCE" != "true" ]]; then
+#             echo "❌ Aborting removal (use --force to override)"
+#             exit 1
+#         fi
+#     fi
+# fi
+
+# Example: Backup important files
+# echo "💾 Creating backup of important files..."
+# BACKUP_DIR="$HOME/.gtr/backups/$WORKTREE_NAME-$(date +%Y%m%d-%H%M%S)"
+# mkdir -p "$BACKUP_DIR"
+# if [[ -f "$WORKTREE_PATH/.env.local" ]]; then
+#     cp "$WORKTREE_PATH/.env.local" "$BACKUP_DIR/" || echo "  ⚠️  Failed to backup .env.local"
+# fi
+
+# Example: Notify external systems before removal
+# echo "📡 Notifying development tools..."
+# curl -X DELETE "https://your-dev-server.com/worktree/$WORKTREE_NAME" \
+#   >/dev/null 2>&1 || echo "  ⚠️  Failed to notify development server"
+
+echo "✅ Pre-remove checks passed"
+exit 0

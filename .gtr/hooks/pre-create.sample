@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# gtr pre-create hook
+# This hook runs BEFORE creating a new worktree
+#
+# Arguments:
+#   $1 - worktree name
+#   $2 - worktree path
+#   $3 - branch name
+#   $4 - base branch
+#
+# Exit codes:
+#   0 - continue with worktree creation
+#   non-zero - abort worktree creation
+
+WORKTREE_NAME="$1"
+WORKTREE_PATH="$2"
+BRANCH_NAME="$3"
+BASE_BRANCH="$4"
+
+echo "🔧 Pre-create hook: $WORKTREE_NAME"
+
+# Example: Validate worktree name
+# if [[ "$WORKTREE_NAME" =~ ^[0-9] ]]; then
+#     echo "❌ Worktree name cannot start with a number"
+#     exit 1
+# fi
+
+# Example: Check if branch name already exists
+# if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+#     echo "❌ Branch $BRANCH_NAME already exists"
+#     exit 1
+# fi
+
+# Example: Ensure base branch is up to date
+# git fetch origin "$BASE_BRANCH" >/dev/null 2>&1
+# if ! git merge-base --is-ancestor "origin/$BASE_BRANCH" "$BASE_BRANCH" 2>/dev/null; then
+#     echo "⚠️  Base branch $BASE_BRANCH is behind origin/$BASE_BRANCH"
+#     echo "   Consider running: git checkout $BASE_BRANCH && git pull"
+# fi
+
+echo "✅ Pre-create checks passed"
+exit 0

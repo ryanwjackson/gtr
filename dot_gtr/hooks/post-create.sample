@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# gtr post-create hook
+# This hook runs AFTER successfully creating a new worktree
+#
+# Arguments:
+#   $1 - worktree name
+#   $2 - worktree path
+#   $3 - branch name
+#   $4 - base branch
+#
+# Exit codes:
+#   0 - success
+#   non-zero - failure (worktree will still exist, but hook failed)
+
+WORKTREE_NAME="$1"
+WORKTREE_PATH="$2"
+BRANCH_NAME="$3"
+BASE_BRANCH="$4"
+
+echo "🎉 Post-create hook: $WORKTREE_NAME"
+
+# Get the main worktree directory
+MAIN_WORKTREE=$(git rev-parse --show-toplevel)
+if [[ "$(git rev-parse --git-dir)" == *"/.git/worktrees/"* ]]; then
+    # We're in a worktree, get the main repository
+    MAIN_GIT_DIR=$(dirname "$(dirname "$(git rev-parse --git-dir)")")
+    MAIN_WORKTREE=$(dirname "$MAIN_GIT_DIR")
+fi
+
+# Copy local files from main worktree to new worktree
+echo "📋 Copying local files to worktree..."
+
+# File patterns to copy (customize as needed)
+FILE_PATTERNS=(
+    ".env*local*"
+    ".env.*local*"
+    ".claude/"
+    ".anthropic/"
+)
+
+copied_files=()
+for pattern in "${FILE_PATTERNS[@]}"; do
+    if [[ "$pattern" == */ ]]; then
+        # Directory pattern
+        dir_name="${pattern%/}"
+        if [[ -d "$MAIN_WORKTREE/$dir_name" ]]; then
+            if cp -r "$MAIN_WORKTREE/$dir_name" "$WORKTREE_PATH/" 2>/dev/null; then
+                copied_files+=("$dir_name/")
+            fi
+        fi
+    else
+        # File pattern - use find to search recursively
+        while IFS= read -r -d '' file; do
+            if [[ -f "$file" ]]; then
+                relative_path="${file#$MAIN_WORKTREE/}"
+                target_path="$WORKTREE_PATH/$relative_path"
+                target_dir_path=$(dirname "$target_path")
+
+                # Create target directory if it doesn't exist
+                mkdir -p "$target_dir_path" 2>/dev/null
+
+                # Copy file
+                if cp "$file" "$target_path" 2>/dev/null; then
+                    copied_files+=("$relative_path")
+                fi
+            fi
+        done < <(find "$MAIN_WORKTREE" -name "$pattern" -type f -print0 2>/dev/null)
+    fi
+done
+
+# Report what was copied
+if [[ ${#copied_files[@]} -gt 0 ]]; then
+    echo "📋 Copied local files: ${copied_files[*]}"
+else
+    echo "ℹ️  No local files found to copy"
+fi
+
+# Whether to run pnpm commands by default
+run_pnpm=true
+
+# Example: Run pnpm commands if enabled
+if [[ "$run_pnpm" == "true" && -f "$WORKTREE_PATH/package.json" ]]; then
+    echo "📦 Running pnpm commands in worktree..."
+
+    if command -v pnpm >/dev/null 2>&1; then
+        echo "  Running pnpm approve-builds..."
+        # Ensure stdin is available for interactive prompts
+        if [[ -t 0 ]]; then
+            # Running interactively - allow user input
+            (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+        else
+            # Running non-interactively - auto-approve all builds
+            echo "  (Non-interactive mode: auto-approving all builds)"
+            (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds) || echo "  ⚠️  pnpm install failed"
+        fi
+
+        # Only run install if we didn't already run it with --dangerously-allow-all-builds
+        if [[ -t 0 ]]; then
+            echo "  Running pnpm install..."
+            (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
+        fi
+    else
+        echo "  ⚠️  pnpm not found, skipping pnpm commands"
+    fi
+else
+    echo "⏭️  Skipping pnpm commands"
+fi
+
+# Example: Set up IDE configuration
+# echo "🔧 Setting up IDE configuration..."
+# if [[ -f "$WORKTREE_PATH/.vscode/settings.json" ]]; then
+#     # Customize VS Code settings for this worktree
+#     echo "  Customizing VS Code settings..."
+# fi
+
+# Example: Create development database
+# echo "🗄️  Setting up development database..."
+# (cd "$WORKTREE_PATH" && npm run db:setup:dev) || echo "  ⚠️  Database setup failed"
+
+# Example: Install git hooks in the worktree
+# echo "🪝 Installing git hooks..."
+# (cd "$WORKTREE_PATH" && npx husky install) || echo "  ⚠️  Husky install failed"
+
+# Example: Notify external systems
+# echo "📡 Notifying development tools..."
+# curl -X POST "https://your-dev-server.com/worktree/created" \
+#   -H "Content-Type: application/json" \
+#   -d "{\"name\":\"$WORKTREE_NAME\",\"path\":\"$WORKTREE_PATH\",\"branch\":\"$BRANCH_NAME\"}" \
+#   >/dev/null 2>&1 || echo "  ⚠️  Failed to notify development server"
+
+echo "✅ Post-create setup completed"
+exit 0

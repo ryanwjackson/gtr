@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# gtr post-remove hook
+# This hook runs AFTER successfully removing a worktree
+#
+# Arguments:
+#   $1 - worktree name
+#   $2 - worktree path (now removed)
+#   $3 - branch name
+#   $4 - force flag ("true" or "false")
+#   $5 - dry_run flag ("true" or "false")
+#
+# Exit codes:
+#   0 - success
+#   non-zero - failure (worktree is already removed, but hook failed)
+
+WORKTREE_NAME="$1"
+WORKTREE_PATH="$2"
+BRANCH_NAME="$3"
+FORCE="$4"
+DRY_RUN="$5"
+
+echo "🧹 Post-remove hook: $WORKTREE_NAME"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "🔍 [DRY RUN] Would run post-remove cleanup"
+    exit 0
+fi
+
+# Example: Clean up development database
+# echo "🗄️  Cleaning up development database..."
+# DB_NAME="dev_${WORKTREE_NAME//-/_}"
+# dropdb "$DB_NAME" 2>/dev/null || echo "  ℹ️  Database $DB_NAME did not exist"
+
+# Example: Clean up docker containers
+# echo "🐳 Cleaning up docker containers..."
+# CONTAINER_NAME="gtr-${WORKTREE_NAME}"
+# docker stop "$CONTAINER_NAME" 2>/dev/null || true
+# docker rm "$CONTAINER_NAME" 2>/dev/null || true
+
+# Example: Clean up temporary files
+# echo "🧹 Cleaning up temporary files..."
+# TEMP_DIR="/tmp/gtr-$WORKTREE_NAME"
+# if [[ -d "$TEMP_DIR" ]]; then
+#     rm -rf "$TEMP_DIR" || echo "  ⚠️  Failed to clean up $TEMP_DIR"
+# fi
+
+# Example: Update project documentation
+# echo "📝 Updating project documentation..."
+# DOCS_FILE="docs/active-worktrees.md"
+# if [[ -f "$DOCS_FILE" ]]; then
+#     # Remove this worktree from the active list
+#     sed -i.bak "/$WORKTREE_NAME/d" "$DOCS_FILE" 2>/dev/null || true
+# fi
+
+# Example: Notify team members
+# echo "📧 Notifying team members..."
+# if command -v notify-send >/dev/null 2>&1; then
+#     notify-send "gtr" "Worktree '$WORKTREE_NAME' has been removed"
+# fi
+
+echo "✅ Post-remove cleanup completed"
+exit 0

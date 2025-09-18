@@ -37,7 +37,7 @@ complete -c gtr -l editor -d 'Editor to open worktrees' -r
 complete -c gtr -l no-open -d "Don't open editor after creating worktree"
 complete -c gtr -l no-install -d 'Skip pnpm commands on create'
 complete -c gtr -l base -d 'Base branch' -r
-complete -c gtr -l untracked -d 'Include untracked changes' -x -a 'true false'
+complete -c gtr -l uncommitted -d 'Include uncommitted changes' -x -a 'true false'
 
 # Command-specific options
 complete -c gtr -n '__fish_seen_subcommand_from remove rm' -l force -d 'Force removal'
