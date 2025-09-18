@@ -1,0 +1,114 @@
+#compdef gtr
+
+_gtr_base_dir() {
+  if [[ -n "$GTR_BASE_DIR" ]]; then
+    print -- "$GTR_BASE_DIR"
+  else
+    print -- "$HOME/Documents/dev/worktrees"
+  fi
+}
+
+_gtr_list_worktrees() {
+  local base
+  base=$(_gtr_base_dir)
+  if [[ -d $base ]]; then
+    command ls -1 $base 2>/dev/null
+  fi
+}
+
+_gtr() {
+  local -a subcmds global_opts
+  subcmds=(
+    'create:Create new worktrees'
+    'c:Alias for create'
+    'remove:Remove worktrees'
+    'rm:Alias for remove'
+    'cd:Change directory to worktree'
+    'list:List worktrees'
+    'ls:Alias for list'
+    'l:Alias for list'
+    'claude:Run claude in worktree'
+    'prune:Clean up merged worktrees'
+    'doctor:Check/fix local files in worktree'
+    'init:Initialize gtr configuration'
+    '--help:Show help'
+    '-h:Show help'
+  )
+  global_opts=(
+    '--prefix[Set branch prefix]:prefix:_guard "[^-]*" prefix'
+    '--username[Set username]:username:_guard "[^-]*" username'
+    '--editor[Editor to open worktrees]:editor:_guard "[^-]*" editor'
+    '--no-open[Do not open editor]'
+    '--no-install[Skip pnpm commands]'
+    '--base[Base branch]:branch:_guard "[^-]*" branch'
+  )
+
+  local curcontext="$curcontext" state line
+  typeset -A opt_args
+  _arguments -C \
+    '1:subcommand:->subcmd' \
+    '*::arguments:->args'
+
+  case $state in
+    subcmd)
+      _describe -t commands 'gtr commands' subcmds
+      return
+      ;;
+    args)
+      case $words[2] in
+        create|c)
+          _arguments \
+            $global_opts \
+            '*:worktree name:($( _gtr_list_worktrees ))'
+          ;;
+        remove|rm)
+          _arguments \
+            $global_opts \
+            '--force[Force removal]' \
+            '--dry-run[Show what would be removed]' \
+            '*:worktree name:($( _gtr_list_worktrees ))'
+          ;;
+        cd)
+          _arguments \
+            $global_opts \
+            '1:worktree name:($( _gtr_list_worktrees ))'
+          ;;
+        list|ls|l)
+          _arguments $global_opts
+          ;;
+        claude)
+          _arguments \
+            $global_opts \
+            '1:worktree name:($( _gtr_list_worktrees ))'
+          ;;
+        prune)
+          _arguments \
+            $global_opts \
+            '--base[Base branch]:branch:_guard "[^-]*" branch' \
+            '--dry-run[Dry run]' \
+            '--force[Force removal]'
+          ;;
+        doctor)
+          _arguments \
+            $global_opts \
+            '--fix[Copy/overwrite missing files]' \
+            '--force[Skip interactive prompts]' \
+            '1:worktree name:($( _gtr_list_worktrees ))'
+          ;;
+        init)
+          _arguments \
+            $global_opts \
+            '--doctor[Check configuration coverage]' \
+            '--fix[Auto-add missing files to config]'
+          ;;
+        *)
+          _arguments $global_opts
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_gtr "$@"
+
+

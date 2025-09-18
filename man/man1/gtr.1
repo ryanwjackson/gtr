@@ -1,0 +1,121 @@
+.TH gtr 1 "September 2025" "gtr" "User Commands"
+.SH NAME
+gtr \- Git worktree helper for fast parallel development
+.SH SYNOPSIS
+.B gtr
+\fICOMMAND\fR [GLOBAL OPTIONS] [ARGS]
+.SH DESCRIPTION
+\fBgtr\fR streamlines working with \fBgit-worktree(1)\fR by quickly creating,
+inspecting, fixing, and pruning per-branch worktrees. It also copies local-only
+files (like .env*local*) into new worktrees and can run pnpm setup automatically.
+.SH COMMANDS
+.TP
+.B create, c \fIname...\fR
+Create one or more worktrees from the current branch or \fI--base\fR.
+.TP
+.B remove, rm \fIname...\fR
+Remove worktrees; optionally delete their branches when safe.
+.TP
+.B cd \fIname\fR
+Change directory to a worktree path.
+.TP
+.B list, ls, l
+List all worktrees.
+.TP
+.B claude \fIname\fR
+Run \fBclaude\fR in the specified worktree directory, creating it if prompted.
+.TP
+.B prune
+Remove worktrees whose branches have been merged (or are ancestors) of \fI--base\fR.
+.TP
+.B doctor [\fIname\fR]
+Check a worktree for missing or diverged local files; optionally fix.
+.TP
+.B init
+Initialize or repair the \fB.gtr/config\fR in the main repository.
+.SH GLOBAL OPTIONS
+.TP
+.B --prefix \fIPREFIX\fR
+Set branch prefix (default: \fBclaude\fR).
+.TP
+.B --username \fIUSERNAME\fR
+Set username for branch naming (default: current user).
+.TP
+.B --editor \fIEDITOR\fR
+Editor to open worktrees after creation (default: \fBcursor\fR).
+.TP
+.B --no-open
+Do not open the editor after creating worktrees.
+.TP
+.B --no-install
+Skip running pnpm commands during worktree creation.
+.TP
+.B --base \fIBRANCH\fR
+Set base branch for creation/pruning (defaults vary by command).
+.SH COMMAND OPTIONS
+.TP
+.B remove, rm
+\fB--force\fR, \fB--dry-run\fR
+.TP
+.B prune
+\fB--base\fR, \fB--dry-run\fR, \fB--force\fR
+.TP
+.B doctor
+\fB--fix\fR, \fB--force\fR
+.TP
+.B init
+\fB--doctor\fR, \fB--fix\fR
+.SH CONFIGURATION
+Configuration lives at \fB.gtr/config\fR in INI-like sections.
+.PP
+[files_to_copy]
+.IP
+Glob patterns (one per line) copied from the main repo into new worktrees.
+Defaults include:
+.IP
+\&.env*local*, .env.*local*, .claude/, .anthropic/
+.PP
+[settings]
+.IP
+\fIeditor\fR, \fIprefix\fR, \fIrun_pnpm\fR, \fIauto_open\fR, optional \fIworktree_base\fR.
+.PP
+[doctor]
+.IP
+\fIshow_detailed_diffs\fR, \fIauto_fix\fR.
+.SH ENVIRONMENT
+.TP
+.B GTR_BASE_DIR
+Overrides the base directory where worktrees are created (defaults to
+\fI$HOME/Documents/dev/worktrees\fR). When \fBsettings.worktree_base\fR is set in
+\fB.gtr/config\fR, it takes precedence and is interpreted relative to the main repo
+unless absolute.
+.SH FILES
+.TP
+.B .gtr/config
+Project configuration file in the main repository.
+.SH EXAMPLES
+.nf
+# Create worktrees
+$ gtr create feature0
+$ gtr create feat1 feat2
+$ gtr create feature0 --base main --no-install --no-open
+
+# Navigate and run tools
+$ gtr cd feature0
+$ gtr claude feature0
+
+# Cleanup
+$ gtr rm feature0 --dry-run
+$ gtr prune --base develop --force
+
+# Health check
+$ gtr doctor feature0 --fix --force
+
+# Initialize configuration
+$ gtr init
+$ gtr init --doctor --fix
+.fi
+.SH SEE ALSO
+git-worktree(1), git-branch(1)
+.SH AUTHOR
+Ryan W. Jackson and contributors

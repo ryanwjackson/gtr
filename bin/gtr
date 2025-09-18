@@ -1,0 +1,1664 @@
+#!/bin/bash
+
+# gtr - Git worktree helper
+# ref: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
+#
+# Examples
+# --------
+#   gtr create feature0          # add ~/code/worktrees/feature0 (based on current branch)
+#   gtr create feat1 feat2       # add two worktrees at once
+#   gtr create feature0 --base main  # create worktree based on main branch
+#   gtr create feature0 --no-install # create worktree without running pnpm commands
+#   gtr rm feature0              # remove the worktree directory
+#   gtr cd feature0              # jump into the worktree directory
+#   gtr claude feature0          # run `claude` while inside that worktree
+#   gtr prune                    # clean up merged worktrees
+#   gtr doctor feature0          # check for missing local files in worktree
+#   gtr doctor feature0 --fix    # check and fix missing local files
+#
+# ------------------------------------------------------------
+
+# Private helper functions (prefixed with _gtr_)
+_gtr_get_base_dir() {
+  echo "${GTR_BASE_DIR:-$HOME/Documents/dev/worktrees}"
+}
+
+_gtr_read_config() {
+  local main_worktree="$1"
+  local config_file="$main_worktree/.gtr/config"
+  local patterns=()
+  
+  if [[ -f "$config_file" ]]; then
+    local in_files_section=false
+    local line_count=0
+    local max_lines=1000  # Prevent infinite loops
+    local error_count=0
+    local max_errors=10   # Stop after too many errors
+    
+    while IFS= read -r line && (( line_count++ < max_lines )) && (( error_count < max_errors )); do
+      # Check for section headers - use string matching instead of regex to avoid escaping issues
+      if [[ "$line" == "[files_to_copy]" ]]; then
+        in_files_section=true
+        continue
+      elif [[ "$line" =~ ^\[ ]]; then
+        in_files_section=false
+        continue
+      fi
+      
+      # Only process lines in the [files_to_copy] section
+      if [[ "$in_files_section" == "true" ]]; then
+        # Skip comments and empty lines - use safer pattern matching
+        if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
+          # Basic validation - skip lines that look like section headers or malformed content
+          if [[ ! "$line" =~ ^\[ && ! "$line" =~ ^[[:space:]]*\[ ]]; then
+            patterns+=("$line")
+          else
+            ((error_count++))
+            echo "Warning: Skipping malformed line in config: $line" >&2
+          fi
+        fi
+      fi
+    done < "$config_file"
+    
+    # If we hit the line limit, something might be wrong
+    if (( line_count >= max_lines )); then
+      echo "Warning: Config file too large or malformed" >&2
+    fi
+    
+    # If we hit too many errors, the config file might be corrupted
+    if (( error_count >= max_errors )); then
+      echo "Error: Too many malformed lines in config file. Consider recreating it." >&2
+      echo "Run 'gtr init' to recreate the configuration file." >&2
+      return 1
+    fi
+  fi
+  
+  # Fallback to default patterns if none found
+  if [[ ${#patterns[@]} -eq 0 ]]; then
+    patterns=(".env*local*" ".claude/" ".anthropic/")
+  fi
+  
+  echo "${patterns[@]}"
+}
+
+_gtr_read_config_setting() {
+  local main_worktree="$1"
+  local section="$2"
+  local key="$3"
+  local default="$4"
+  local config_file="$main_worktree/.gtr/config"
+  
+  if [[ ! -f "$config_file" ]]; then
+    echo "$default"
+    return
+  fi
+  
+  # Validate inputs to prevent issues
+  if [[ -z "$section" || -z "$key" ]]; then
+    echo "$default"
+    return
+  fi
+  
+  local in_section=false
+  local line_count=0
+  local max_lines=1000  # Prevent infinite loops
+  local error_count=0
+  local max_errors=5     # Stop after too many errors
+  
+  while IFS= read -r line && (( line_count++ < max_lines )) && (( error_count < max_errors )); do
+    # Check for section headers - use string matching instead of regex to avoid escaping issues
+    if [[ "$line" == "[$section]" ]]; then
+      in_section=true
+      continue
+    elif [[ "$line" =~ ^\[ ]]; then
+      in_section=false
+      continue
+    fi
+    
+    # Only process lines in the target section
+    if [[ "$in_section" == "true" ]]; then
+      # Skip comments and empty lines - use safer pattern matching
+      if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
+        # Use string matching with prefix check instead of regex
+        if [[ "$line" == "$key="* ]]; then
+          echo "${line#*=}"
+          return
+        fi
+      fi
+    fi
+  done < "$config_file" 2>/dev/null || {
+    echo "Warning: Error reading config file, using default value" >&2
+    echo "$default"
+    return
+  }
+  
+  # If we hit the line limit, something might be wrong
+  if (( line_count >= max_lines )); then
+    echo "Warning: Config file too large or malformed, using default value" >&2
+  fi
+  
+  # If we hit too many errors, the config file might be corrupted
+  if (( error_count >= max_errors )); then
+    echo "Warning: Config file appears corrupted, using default value" >&2
+  fi
+  
+  echo "$default"
+}
+
+_gtr_handle_malformed_config() {
+  local main_worktree="$1"
+  local config_file="$main_worktree/.gtr/config"
+  
+  echo "❌ The existing .gtr/config file appears to be malformed or corrupted."
+  echo ""
+  echo "This can happen when:"
+  echo "  • The config file was manually edited with invalid syntax"
+  echo "  • The config file was created with an older version of gtr"
+  echo "  • The file was corrupted during editing"
+  echo ""
+  echo "Options:"
+  echo "  1. Overwrite with a fresh default configuration"
+  echo "  2. Show diff between current and default config"
+  echo "  3. Try to merge/repair the existing config"
+  echo "  4. Exit and fix manually"
+  echo ""
+  
+  while true; do
+    read -p "Choose an option (1-4): " choice
+    case $choice in
+      1)
+        echo "🔄 Creating fresh configuration..."
+        _gtr_init_config "$main_worktree" "$(dirname "$config_file")" "$config_file"
+        return 0
+        ;;
+      2)
+        echo "📋 Showing diff between current and default config:"
+        echo "--- Current config ---"
+        cat "$config_file" 2>/dev/null || echo "(unable to read current config)"
+        echo ""
+        echo "--- Default config ---"
+        _gtr_generate_default_config
+        return 1
+        ;;
+      3)
+        echo "🔧 Attempting to repair existing config..."
+        _gtr_repair_config "$config_file"
+        return $?
+        ;;
+      4)
+        echo "ℹ️  Exiting. You can manually edit $config_file and try again."
+        return 1
+        ;;
+      *)
+        echo "Invalid option. Please choose 1-4."
+        ;;
+    esac
+  done
+}
+
+_gtr_generate_default_config() {
+  cat << 'EOF'
+# gtr configuration file
+# This file defines gtr behavior and which files should be copied to worktrees
+
+[files_to_copy]
+# File patterns to copy (glob patterns, one per line)
+# Default patterns for local environment files
+.env*local*
+.env.*local*
+
+# Claude settings directories
+.claude/
+.anthropic/
+
+# Add more patterns as needed
+# Example:
+# config/local.json
+# secrets/*.local
+
+[settings]
+# Default editor to open worktrees
+editor=cursor
+
+# Default branch prefix for worktrees
+prefix=claude
+
+# Whether to run pnpm commands by default
+run_pnpm=true
+
+# Whether to open editor after creating worktree
+auto_open=true
+
+# Base directory for worktrees (relative to main repo or absolute path)
+# worktree_base=../worktrees
+
+[doctor]
+# Whether to show detailed diff information
+show_detailed_diffs=false
+
+# Whether to auto-fix missing files without prompts
+auto_fix=false
+EOF
+}
+
+_gtr_repair_config() {
+  local config_file="$1"
+  local backup_file="${config_file}.backup.$(date +%s)"
+  
+  # Create backup
+  cp "$config_file" "$backup_file" 2>/dev/null || {
+    echo "❌ Unable to create backup of config file"
+    return 1
+  }
+  
+  echo "📋 Created backup: $backup_file"
+  
+  # Try to extract valid patterns from the existing config
+  local patterns=()
+  local in_files_section=false
+  
+  while IFS= read -r line; do
+    if [[ "$line" == "[files_to_copy]" ]]; then
+      in_files_section=true
+      continue
+    elif [[ "$line" == "["* ]]; then
+      in_files_section=false
+      continue
+    fi
+    
+    if [[ "$in_files_section" == "true" ]]; then
+      # Skip empty lines, comments, and section headers
+      if [[ -n "$line" && "$line" != "#"* && "$line" != "["* ]]; then
+        patterns+=("$line")
+      fi
+    fi
+  done < "$config_file"
+  
+  # Generate new config with extracted patterns
+  {
+    echo "# gtr configuration file (repaired)"
+    echo "# This file defines gtr behavior and which files should be copied to worktrees"
+    echo ""
+    echo "[files_to_copy]"
+    echo "# File patterns to copy (glob patterns, one per line)"
+    if [[ ${#patterns[@]} -gt 0 ]]; then
+      echo "# Extracted from previous config:"
+      for pattern in "${patterns[@]}"; do
+        echo "$pattern"
+      done
+    else
+      echo "# Default patterns for local environment files"
+      echo ".env*local*"
+      echo ".env.*local*"
+      echo ""
+      echo "# Claude settings directories"
+      echo ".claude/"
+      echo ".anthropic/"
+    fi
+    echo ""
+    echo "[settings]"
+    echo "editor=cursor"
+    echo "prefix=claude"
+    echo "run_pnpm=true"
+    echo "auto_open=true"
+    echo ""
+    echo "[doctor]"
+    echo "show_detailed_diffs=false"
+    echo "auto_fix=false"
+  } > "$config_file"
+  
+  echo "✅ Config file repaired successfully"
+  echo "📋 Extracted ${#patterns[@]} patterns from the original config"
+  return 0
+}
+
+_gtr_copy_local_files() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local force="${3:-false}"
+  local main_worktree="${4:-$source_dir}"
+  local copied_files=()
+  
+  # Read configuration patterns
+  local patterns=($(_gtr_read_config "$main_worktree"))
+  
+  if [[ -d "$source_dir" ]]; then
+    for pattern in "${patterns[@]}"; do
+      if [[ "$pattern" == */ ]]; then
+        # Directory pattern
+        local dir_name="${pattern%/}"
+        if [[ -d "$source_dir/$dir_name" ]]; then
+          if cp -r "$source_dir/$dir_name" "$target_dir/" 2>/dev/null; then
+            copied_files+=("$dir_name/")
+          fi
+        fi
+      else
+        # File pattern - use find to search recursively
+        while IFS= read -r -d '' file; do
+          if [[ -f "$file" ]]; then
+            local relative_path="${file#$source_dir/}"
+            local target_path="$target_dir/$relative_path"
+            local target_dir_path=$(dirname "$target_path")
+            
+            # Create target directory if it doesn't exist
+            mkdir -p "$target_dir_path" 2>/dev/null
+            
+            # Check if target file exists and is different
+            if [[ -f "$target_path" ]] && _gtr_files_different "$file" "$target_path"; then
+              if _gtr_interactive_overwrite "$file" "$target_path" "$target_path" "$force"; then
+                copied_files+=("$relative_path")
+              fi
+            else
+              # File doesn't exist or is the same, safe to copy
+              if cp "$file" "$target_path" 2>/dev/null; then
+                copied_files+=("$relative_path")
+              fi
+            fi
+          fi
+        done < <(find "$source_dir" -name "$pattern" -type f -print0 2>/dev/null)
+      fi
+    done
+  fi
+  
+  # Report what was copied
+  if [[ ${#copied_files[@]} -gt 0 ]]; then
+    echo "📋 Copied local files: ${copied_files[*]}"
+  else
+    echo "ℹ️  No local files found to copy"
+  fi
+}
+
+_gtr_run_pnpm_commands() {
+  local worktree_dir="$1"
+  local no_install="$2"
+  
+  if [[ "$no_install" == "true" ]]; then
+    echo "⏭️  Skipping pnpm commands (--no-install specified)"
+    return 0
+  fi
+  
+  if [[ -f "$worktree_dir/package.json" ]]; then
+    echo "📦 Running pnpm commands in worktree..."
+    
+    # Run pnpm approve-builds
+    if command -v pnpm >/dev/null 2>&1; then
+      echo "  Running pnpm approve-builds..."
+      (cd "$worktree_dir" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+      
+      echo "  Running pnpm install..."
+      (cd "$worktree_dir" && pnpm install) || echo "  ⚠️  pnpm install failed"
+    else
+      echo "  ⚠️  pnpm not found, skipping pnpm commands"
+    fi
+  else
+    echo "ℹ️  No package.json found, skipping pnpm commands"
+  fi
+}
+
+_gtr_files_different() {
+  local file1="$1"
+  local file2="$2"
+  
+  if [[ ! -f "$file1" || ! -f "$file2" ]]; then
+    return 1
+  fi
+  
+  # Use diff to check if files are different
+  if diff -q "$file1" "$file2" >/dev/null 2>&1; then
+    return 1  # Files are the same
+  else
+    return 0  # Files are different
+  fi
+}
+
+_gtr_show_diff() {
+  local file1="$1"
+  local file2="$2"
+  
+  echo "📋 Showing diff between main repo and worktree:"
+  echo "  Main repo: $file1"
+  echo "  Worktree:  $file2"
+  echo ""
+  
+  if command -v diff >/dev/null 2>&1; then
+    diff -u "$file1" "$file2" || true
+  else
+    echo "⚠️  diff command not available"
+  fi
+  echo ""
+}
+
+_gtr_merge_files() {
+  local main_file="$1"
+  local worktree_file="$2"
+  local target_file="$3"
+  
+  echo "🔀 Merging files..."
+  
+  if command -v diff3 >/dev/null 2>&1; then
+    # Use diff3 for three-way merge if available
+    if diff3 -m "$main_file" "$worktree_file" "$worktree_file" > "$target_file" 2>/dev/null; then
+      echo "✅ Successfully merged using diff3"
+      return 0
+    fi
+  fi
+  
+  # Fallback: simple merge by appending worktree changes
+  echo "📝 Using simple merge strategy..."
+  cp "$main_file" "$target_file"
+  echo "" >> "$target_file"
+  echo "# Worktree-specific changes:" >> "$target_file"
+  if command -v diff >/dev/null 2>&1; then
+    diff -u "$main_file" "$worktree_file" >> "$target_file" 2>/dev/null || true
+  fi
+  
+  echo "✅ Files merged (manual review recommended)"
+  return 0
+}
+
+_gtr_interactive_overwrite() {
+  local main_file="$1"
+  local worktree_file="$2"
+  local target_file="$3"
+  local force="$4"
+  
+  if [[ "$force" == "true" ]]; then
+    echo "🔄 Force overwriting: $(basename "$worktree_file")"
+    cp "$main_file" "$target_file"
+    return 0
+  fi
+  
+  echo ""
+  echo "⚠️  File already exists and is different: $(basename "$worktree_file")"
+  echo "   Main repo: $main_file"
+  echo "   Worktree:  $worktree_file"
+  echo ""
+  echo "What would you like to do?"
+  echo "  [y]es  - Overwrite with main repo version"
+  echo "  [n]o   - Skip this file"
+  echo "  [d]iff - Show diff and ask again"
+  echo "  [m]erge - Merge both files"
+  echo ""
+  
+  while true; do
+    printf "Choose [y/n/d/m]: "
+    read -r choice
+    case "$choice" in
+      [yY]|[yY][eE][sS])
+        echo "🔄 Overwriting with main repo version..."
+        cp "$main_file" "$target_file"
+        return 0
+        ;;
+      [nN]|[nN][oO])
+        echo "⏭️  Skipping file..."
+        return 1
+        ;;
+      [dD]|[dD][iI][fF][fF])
+        _gtr_show_diff "$main_file" "$worktree_file"
+        # Ask again after showing diff
+        ;;
+      [mM]|[mM][eE][rR][gG][eE])
+        _gtr_merge_files "$main_file" "$worktree_file" "$target_file"
+        return 0
+        ;;
+      *)
+        echo "Invalid choice. Please choose y, n, d, or m."
+        ;;
+    esac
+  done
+}
+
+_gtr_get_main_worktree() {
+  # Get the main worktree (the one that's not a worktree)
+  local current_worktree=$(git rev-parse --show-toplevel)
+  local git_dir=$(git rev-parse --git-dir)
+  
+  # If we're in a worktree, the git-dir will be in .git/worktrees/
+  # The main worktree is the parent of the .git directory
+  if [[ "$git_dir" == *"/.git/worktrees/"* ]]; then
+    # We're in a worktree, get the main repository
+    local main_git_dir=$(dirname "$(dirname "$git_dir")")
+    # The main worktree is the parent of the .git directory
+    echo "$(dirname "$main_git_dir")"
+  else
+    # We're in the main repository
+    echo "$current_worktree"
+  fi
+}
+
+_gtr_is_initialized() {
+  local main_worktree="$(_gtr_get_main_worktree)"
+  local config_file="$main_worktree/.gtr/config"
+  
+  # Check if the .gtr directory and config file exist
+  if [[ -f "$config_file" ]]; then
+    return 0  # Initialized
+  else
+    return 1  # Not initialized
+  fi
+}
+
+_gtr_parse_global_flags() {
+  local main_worktree="$(_gtr_get_main_worktree)"
+  local prefix="claude"
+  local editor="cursor"
+  local no_open=false
+  local no_install=false
+  local username=$(whoami)
+  local base_branch=""
+  local args=()
+  
+  # Read default values from config
+  local config_prefix="$(_gtr_read_config_setting "$main_worktree" "settings" "prefix" "claude")"
+  local config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
+  local config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
+  local config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
+  local config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
+  
+  # Set defaults from config
+  prefix="$config_prefix"
+  editor="$config_editor"
+  
+  # Set worktree base if configured
+  if [[ -n "$config_worktree_base" ]]; then
+    if [[ "$config_worktree_base" == /* ]]; then
+      # Absolute path
+      export GTR_BASE_DIR="$config_worktree_base"
+    else
+      # Relative path from main worktree
+      export GTR_BASE_DIR="$main_worktree/$config_worktree_base"
+    fi
+  fi
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --prefix)
+        if [[ -n "$2" ]]; then
+          prefix="$2"
+          shift 2
+        else
+          echo "Error: --prefix requires a value"
+          return 1
+        fi
+        ;;
+      --editor)
+        if [[ -n "$2" ]]; then
+          editor="$2"
+          shift 2
+        else
+          echo "Error: --editor requires a value"
+          return 1
+        fi
+        ;;
+      --username)
+        if [[ -n "$2" ]]; then
+          username="$2"
+          shift 2
+        else
+          echo "Error: --username requires a value"
+          return 1
+        fi
+        ;;
+      --no-open)
+        no_open=true
+        shift
+        ;;
+      --no-install)
+        no_install=true
+        shift
+        ;;
+      --base)
+        if [[ -n "$2" ]]; then
+          base_branch="$2"
+          shift 2
+        else
+          echo "Error: --base requires a value"
+          return 1
+        fi
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+  
+  # Apply config-based defaults if not overridden by flags
+  if [[ "$no_open" == "false" && "$config_auto_open" == "false" ]]; then
+    no_open=true
+  fi
+  
+  if [[ "$no_install" == "false" && "$config_run_pnpm" == "false" ]]; then
+    no_install=true
+  fi
+  
+  # Export variables for use in other functions
+  export _GTR_PREFIX="$prefix"
+  export _GTR_EDITOR="$editor"
+  export _GTR_NO_OPEN="$no_open"
+  export _GTR_NO_INSTALL="$no_install"
+  export _GTR_USERNAME="$username"
+  export _GTR_BASE_BRANCH="$base_branch"
+  export _GTR_ARGS=("${args[@]}")
+}
+
+_gtr_create_worktree() {
+  local name="$1"
+  local base_branch="${_GTR_BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+  local base="$(_gtr_get_base_dir)"
+  local branch_name="worktrees/$_GTR_USERNAME/$name"
+  local main_worktree="$(_gtr_get_main_worktree)"
+  
+  # Check if branch already exists
+  if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+    echo "Branch '$branch_name' already exists. Skipping '$name'."
+    return 1
+  fi
+  
+  # Create worktree and branch from the specified base
+  if git worktree add "$base/$name" -b "$branch_name" "$base_branch"; then
+    echo "✅ Created worktree '$name' based on $base_branch"
+    
+    # Copy local files from main worktree to new worktree
+    _gtr_copy_local_files "$main_worktree" "$base/$name" "true" "$main_worktree"
+    
+    # Run pnpm commands if not disabled
+    _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
+    
+    if [[ "$_GTR_NO_OPEN" == "false" ]]; then
+      echo "Opening '$base/$name' with $_GTR_EDITOR"
+      $_GTR_EDITOR "$base/$name"
+    else
+      echo "Worktree ready at '$base/$name'"
+    fi
+    return 0
+  else
+    echo "Failed to create worktree '$name'"
+    return 1
+  fi
+}
+
+_gtr_remove_worktree() {
+  local name="$1"
+  local force="$2"
+  local dry_run="$3"
+  local base="$(_gtr_get_base_dir)"
+  local branch_name="worktrees/$_GTR_USERNAME/$name"
+  
+  # Get the actual branch the worktree is on before removing it
+  local worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $base/$name" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
+  
+  # Try alternative method if the first one didn't work
+  if [[ -z "$worktree_branch" ]]; then
+    worktree_branch=$(git worktree list --porcelain | awk -v worktree="$base/$name" '
+      /^worktree/ { 
+        if ($0 ~ worktree) { 
+          found=1; next 
+        } else { 
+          found=0; next 
+        }
+      }
+      found && /^branch refs\/heads\// { 
+        gsub(/^branch refs\/heads\//, ""); 
+        print; 
+        exit 
+      }
+    ')
+  fi
+  
+  # Determine which branch to check for deletion
+  local branch_to_check=""
+  local is_fallback=false
+  if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+    branch_to_check="$branch_name"
+  else
+    if [[ -n "$worktree_branch" ]] && git show-ref --verify --quiet "refs/heads/$worktree_branch"; then
+      branch_to_check="$worktree_branch"
+      is_fallback=true
+      echo "Expected branch '$branch_name' not found, but worktree was on branch '$worktree_branch'"
+    fi
+  fi
+  
+  if [[ "$dry_run" == "true" ]]; then
+    echo "🔍 [DRY RUN] Would remove worktree: $base/$name"
+    if [[ -n "$branch_to_check" ]]; then
+      # Safeguard: Never delete main/master branches
+      if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
+        echo "🔍 [DRY RUN] Would skip deletion of main branch '$branch_to_check'"
+      else
+        # Check if branch has uncommitted changes
+        if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+          echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has changes)"
+        else
+          # Check if branch is ahead/behind or has different commits
+          local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
+          if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
+            echo "🔍 [DRY RUN] Would delete branch: $branch_to_check"
+          else
+            echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has diverged)"
+          fi
+        fi
+      fi
+    fi
+  else
+    # Remove the worktree
+    if git worktree remove "$base/$name"; then
+      echo "Removed worktree '$name'"
+      
+      # Check if we can safely delete the branch
+      if [[ -n "$branch_to_check" ]]; then
+        # Safeguard: Never delete main/master branches
+        if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
+          echo "Skipping deletion of main branch '$branch_to_check'"
+        else
+          # Check if branch has uncommitted changes
+          if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+            echo "Branch '$branch_to_check' has changes. Not deleting."
+          else
+            # Check if branch is ahead/behind or has different commits
+            local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
+            if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
+              # Always ask for confirmation if this is a fallback branch, even with --force
+              if [[ "$is_fallback" == "true" ]]; then
+                printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
+                read -r reply
+                case "$reply" in
+                  [yY]|[yY][eE][sS])
+                    echo "Deleting branch '$branch_to_check'"
+                    git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+                    ;;
+                  *)
+                    echo "Skipped deleting branch '$branch_to_check'"
+                    ;;
+                esac
+              elif [[ "$force" == "true" ]]; then
+                echo "Deleting branch '$branch_to_check' (no changes)"
+                git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+              else
+                printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
+                read -r reply
+                case "$reply" in
+                  [yY]|[yY][eE][sS])
+                    echo "Deleting branch '$branch_to_check'"
+                    git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+                    ;;
+                  *)
+                    echo "Skipped deleting branch '$branch_to_check'"
+                    ;;
+                esac
+              fi
+            else
+              echo "Branch '$branch_to_check' has diverged. Not deleting."
+            fi
+          fi
+        fi
+      fi
+    else
+      echo "Failed to remove worktree '$name'"
+    fi
+  fi
+}
+
+_gtr_prune_worktrees() {
+  local base_branch="${_GTR_BASE_BRANCH:-main}"
+  local dry_run="${_GTR_DRY_RUN:-false}"
+  local force="${_GTR_FORCE:-false}"
+  local base="$(_gtr_get_base_dir)"
+  local main_worktree="$(_gtr_get_main_worktree)"
+  
+  echo "🧹 Cleaning up merged worktrees (base: $base_branch)..."
+  
+  # Parse worktrees using a more robust approach
+  git worktree list --porcelain | awk -v main_worktree="$main_worktree" '
+    /^worktree / {
+      worktree_path = $2
+      if (worktree_path != main_worktree) {
+        worktrees[worktree_path] = ""
+      }
+    }
+    /^branch refs\/heads\// {
+      if (worktree_path != main_worktree) {
+        worktrees[worktree_path] = substr($0, 19)  # Remove "branch refs/heads/"
+      }
+    }
+    END {
+      for (wt in worktrees) {
+        if (worktrees[wt] != "") {
+          print wt "|" worktrees[wt]
+        }
+      }
+    }
+  ' | while IFS='|' read -r worktree_path branch_name; do
+    if [[ -n "$worktree_path" && -n "$branch_name" ]]; then
+      local should_remove=false
+      local reason=""
+      
+      # Check if branch is merged using multiple strategies
+      if git branch --merged "$base_branch" | grep -q "^[[:space:]]*$branch_name$"; then
+        should_remove=true
+        reason="merged into $base_branch"
+      elif git merge-base --is-ancestor "$branch_name" "$base_branch" 2>/dev/null; then
+        should_remove=true
+        reason="ancestor of $base_branch"
+      else
+        # Check if the branch's commits are all in the base branch (squash merge case)
+        local branch_commits=$(git rev-list "$branch_name" --not "$base_branch" 2>/dev/null | wc -l)
+        if [[ "$branch_commits" -eq 0 ]]; then
+          should_remove=true
+          reason="all commits present in $base_branch (squash merged)"
+        fi
+      fi
+      
+      if [[ "$should_remove" == "true" ]]; then
+        if [[ "$dry_run" == "true" ]]; then
+          echo "🔍 [DRY RUN] Would remove: $worktree_path ($branch_name) - $reason"
+        else
+          if [[ "$force" == "true" ]]; then
+            echo "🗑️  Removing: $worktree_path ($branch_name) - $reason"
+            git worktree remove "$worktree_path" 2>/dev/null && \
+            git branch -d "$branch_name" 2>/dev/null || \
+            echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
+          else
+            printf "Remove worktree '%s' (%s) - %s? [y/N] " "$worktree_path" "$branch_name" "$reason"
+            read -r reply
+            case "$reply" in
+              [yY]|[yY][eE][sS])
+                echo "🗑️  Removing: $worktree_path ($branch_name)"
+                git worktree remove "$worktree_path" 2>/dev/null && \
+                git branch -d "$branch_name" 2>/dev/null || \
+                echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
+                ;;
+              *)
+                echo "⏭️  Skipped: $worktree_path ($branch_name)"
+                ;;
+            esac
+          fi
+        fi
+      else
+        echo "✅ Keeping: $worktree_path ($branch_name) - not merged"
+      fi
+    fi
+  done
+  
+  if [[ "$dry_run" == "true" ]]; then
+    echo "🔍 Dry run complete! Use without --dry-run to actually remove worktrees."
+  else
+    echo "✨ Cleanup complete!"
+  fi
+}
+
+# Public command functions
+gtr_create() {
+  # Check if the repository has been initialized
+  if ! _gtr_is_initialized; then
+    echo "❌ Repository has not been initialized with gtr"
+    echo "   Run 'gtr init' first to set up the configuration"
+    return 1
+  fi
+  
+  # Use the global base_branch variable, default to current branch if not set
+  if [[ -z "$_GTR_BASE_BRANCH" ]]; then
+    _GTR_BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  fi
+  
+  for name in "${_GTR_ARGS[@]}"; do
+    _gtr_create_worktree "$name"
+  done
+}
+
+gtr_remove() {
+  local force="false"
+  local dry_run="false"
+  local names=()
+  
+  # Check for flags and separate them from names
+  for arg in "${_GTR_ARGS[@]}"; do
+    if [[ "$arg" == "--force" ]]; then
+      force="true"
+    elif [[ "$arg" == "--dry-run" ]]; then
+      dry_run="true"
+    else
+      names+=("$arg")
+    fi
+  done
+  
+  for name in "${names[@]}"; do
+    _gtr_remove_worktree "$name" "$force" "$dry_run"
+  done
+  
+  if [[ "$dry_run" == "true" ]]; then
+    echo "🔍 Dry run complete! Use without --dry-run to actually remove worktrees."
+  fi
+}
+
+gtr_cd() {
+  local name=""
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    name="${_GTR_ARGS[1]}"
+  fi
+  local base="$(_gtr_get_base_dir)"
+  
+  if [[ -z "$name" ]]; then
+    echo "Usage: gtr cd <name>"
+    return 1
+  fi
+  
+  cd "$base/$name" || { echo "No such worktree: $base/$name"; return 1; }
+}
+
+gtr_list() {
+  git worktree list
+}
+
+gtr_claude() {
+  local name=""
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    name="${_GTR_ARGS[1]}"
+  fi
+  local base="$(_gtr_get_base_dir)"
+  local dir="$base/$name"
+
+  if [[ -z "$name" ]]; then
+    echo "Usage: gtr claude <name>"
+    return 1
+  fi
+
+  if [ ! -d "$dir" ]; then
+    # Prompt in a shell-agnostic way
+    printf "Worktree '%s' doesn't exist. Create it now? [y/N] " "$name"
+    read -r reply
+    case "$reply" in
+      [yY]|[yY][eE][sS])
+        local branch_name="worktrees/$_GTR_USERNAME/$name"
+        
+        # Check if branch already exists
+        if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+          echo "Branch '$branch_name' already exists. Cannot create worktree."
+          return 1
+        fi
+        
+        echo "Creating worktree '$name'…"
+        git worktree add "$dir" -b "$branch_name" || { echo "git worktree add failed"; return 1; }
+        ;;
+      *)
+        echo "Aborted."; return 1;;
+    esac
+  fi
+
+  ( cd "$dir" && claude )
+}
+
+gtr_prune() {
+  local base_branch="main"
+  local dry_run="false"
+  local force="false"
+  
+  # Parse prune-specific flags
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --base)
+        # This won't work in a simple loop, but we'll handle it in the main function
+        ;;
+      --dry-run)
+        dry_run="true"
+        ;;
+      --force)
+        force="true"
+        ;;
+    esac
+  done
+  
+  # Handle --base flag properly
+  local i=0
+  while [[ $i -lt ${#_GTR_ARGS[@]} ]]; do
+    if [[ "${_GTR_ARGS[$i]}" == "--base" && $((i+1)) -lt ${#_GTR_ARGS[@]} ]]; then
+      base_branch="${_GTR_ARGS[$((i+1))]}"
+      i=$((i+2))
+    else
+      i=$((i+1))
+    fi
+  done
+  
+  export _GTR_BASE_BRANCH="$base_branch"
+  export _GTR_DRY_RUN="$dry_run"
+  export _GTR_FORCE="$force"
+  
+  _gtr_prune_worktrees
+}
+
+gtr_init() {
+  local init_doctor="${_GTR_INIT_DOCTOR:-false}"
+  local init_fix="${_GTR_INIT_FIX:-false}"
+  local main_worktree="$(_gtr_get_main_worktree)"
+  local config_dir="$main_worktree/.gtr"
+  local config_file="$config_dir/config"
+  
+  # Check if we're in a worktree (init should only run in main repo)
+  local git_dir=$(git rev-parse --git-dir)
+  if [[ "$git_dir" == *"/.git/worktrees/"* ]]; then
+    echo "❌ gtr init should be run from the main repository, not a worktree"
+    return 1
+  fi
+  
+  if [[ "$init_doctor" == "true" ]]; then
+    _gtr_init_doctor "$main_worktree" "$config_file" "$init_fix"
+  else
+    _gtr_init_config "$main_worktree" "$config_dir" "$config_file"
+  fi
+}
+
+_gtr_init_config() {
+  local main_worktree="$1"
+  local config_dir="$2"
+  local config_file="$3"
+  
+  echo "🔧 Initializing gtr configuration..."
+  
+  # Create .gtr directory
+  if [[ ! -d "$config_dir" ]]; then
+    mkdir -p "$config_dir"
+    echo "📁 Created .gtr directory"
+  fi
+  
+  # Handle existing config file
+  if [[ -f "$config_file" ]]; then
+    echo "⚠️  Configuration file already exists: $config_file"
+    echo ""
+    echo "What would you like to do?"
+    echo "  [o]verwrite - Replace with default configuration"
+    echo "  [d]iff      - Show diff between current and default"
+    echo "  [m]erge     - Merge default settings into current config"
+    echo "  [s]kip      - Keep existing configuration"
+    echo ""
+    
+    while true; do
+      printf "Choose [overwrite/diff/merge/skip]: "
+      if ! read -r choice; then
+        echo "No input available, skipping configuration update"
+        break
+      fi
+      
+      case "$choice" in
+        [oO]|overwrite)
+          echo "🔄 Overwriting configuration file..."
+          _gtr_create_default_config "$config_file"
+          echo "✅ Configuration file overwritten"
+          break
+          ;;
+        [dD]|diff)
+          _gtr_show_config_diff "$config_file"
+          # Ask again after showing diff
+          ;;
+        [mM]|merge)
+          _gtr_merge_config "$config_file"
+          echo "✅ Configuration file merged"
+          break
+          ;;
+        [sS]|skip)
+          echo "⏭️  Keeping existing configuration"
+          break
+          ;;
+        *)
+          echo "Invalid choice. Please choose overwrite, diff, merge, or skip."
+          ;;
+      esac
+    done
+  else
+    _gtr_create_default_config "$config_file"
+    echo "📝 Created default configuration file"
+  fi
+  
+  echo "✅ gtr configuration initialized successfully!"
+  echo "   Config file: $config_file"
+  echo "   Edit this file to customize gtr behavior"
+}
+
+_gtr_create_default_config() {
+  local config_file="$1"
+  cat > "$config_file" << 'EOF'
+# gtr configuration file
+# This file defines gtr behavior and which files should be copied to worktrees
+
+[files_to_copy]
+# File patterns to copy (glob patterns, one per line)
+# Default patterns for local environment files
+.env*local*
+.env.*local*
+
+# Claude settings directories
+.claude/
+.anthropic/
+
+# Add more patterns as needed
+# Example:
+# config/local.json
+# secrets/*.local
+
+[settings]
+# Default editor to open worktrees
+editor=cursor
+
+# Default branch prefix for worktrees
+prefix=claude
+
+# Whether to run pnpm commands by default
+run_pnpm=true
+
+# Whether to open editor after creating worktree
+auto_open=true
+
+# Base directory for worktrees (relative to main repo or absolute path)
+# worktree_base=../worktrees
+
+[doctor]
+# Whether to show detailed diff information
+show_detailed_diffs=false
+
+# Whether to auto-fix missing files without prompts
+auto_fix=false
+EOF
+}
+
+_gtr_show_config_diff() {
+  local config_file="$1"
+  local temp_file=$(mktemp)
+  
+  _gtr_create_default_config "$temp_file"
+  
+  echo "📋 Showing diff between current and default configuration:"
+  echo "  Current: $config_file"
+  echo "  Default: (temporary)"
+  echo ""
+  
+  if command -v diff >/dev/null 2>&1; then
+    diff -u "$config_file" "$temp_file" || true
+  else
+    echo "⚠️  diff command not available"
+  fi
+  
+  rm -f "$temp_file"
+  echo ""
+}
+
+_gtr_merge_config() {
+  local config_file="$1"
+  local temp_file=$(mktemp)
+  local backup_file="${config_file}.backup.$(date +%s)"
+  
+  # Create backup
+  cp "$config_file" "$backup_file"
+  echo "📋 Created backup: $backup_file"
+  
+  # Create default config
+  _gtr_create_default_config "$temp_file"
+  
+  # Merge using diff3 if available, otherwise simple append
+  if command -v diff3 >/dev/null 2>&1; then
+    if diff3 -m "$config_file" "$temp_file" "$config_file" > "${config_file}.merged" 2>/dev/null; then
+      mv "${config_file}.merged" "$config_file"
+      echo "✅ Successfully merged using diff3"
+    else
+      echo "⚠️  diff3 merge failed, using simple merge strategy"
+      _gtr_simple_merge_config "$config_file" "$temp_file"
+    fi
+  else
+    echo "📝 Using simple merge strategy"
+    _gtr_simple_merge_config "$config_file" "$temp_file"
+  fi
+  
+  rm -f "$temp_file"
+}
+
+_gtr_simple_merge_config() {
+  local config_file="$1"
+  local temp_file="$2"
+  
+  # Simple merge: append missing sections from default config
+  echo "" >> "$config_file"
+  echo "# Merged settings from default configuration" >> "$config_file"
+  
+  # Check if [files_to_copy] section exists
+  if ! grep -q "^\[files_to_copy\]" "$config_file"; then
+    echo "" >> "$config_file"
+    echo "[files_to_copy]" >> "$config_file"
+    sed -n '/^\[files_to_copy\]/,/^\[/p' "$temp_file" | grep -v "^\[" | grep -v "^$" >> "$config_file"
+  fi
+  
+  # Check if [settings] section exists
+  if ! grep -q "^\[settings\]" "$config_file"; then
+    echo "" >> "$config_file"
+    echo "[settings]" >> "$config_file"
+    sed -n '/^\[settings\]/,/^\[/p' "$temp_file" | grep -v "^\[" | grep -v "^$" >> "$config_file"
+  fi
+  
+  # Check if [doctor] section exists
+  if ! grep -q "^\[doctor\]" "$config_file"; then
+    echo "" >> "$config_file"
+    echo "[doctor]" >> "$config_file"
+    sed -n '/^\[doctor\]/,/^\[/p' "$temp_file" | grep -v "^\[" | grep -v "^$" >> "$config_file"
+  fi
+  
+  echo "✅ Configuration merged (manual review recommended)"
+}
+
+_gtr_init_doctor() {
+  local main_worktree="$1"
+  local config_file="$2"
+  local init_fix="$3"
+  
+  echo "🔍 Checking gtr configuration..."
+  
+  if [[ ! -f "$config_file" ]]; then
+    echo "❌ No configuration file found at $config_file"
+    echo "   Run 'gtr init' first to create the configuration"
+    return 1
+  fi
+  
+  # Test if the config file can be read without errors
+  local test_patterns
+  local error_output
+  error_output=$(_gtr_read_config "$main_worktree" 2>&1)
+  local exit_code=$?
+  
+  # Check if there were regex errors in the output
+  if [[ "$error_output" == *"failed to compile regex"* ]] || [[ $exit_code -ne 0 ]]; then
+    echo "❌ The configuration file appears to be malformed or corrupted."
+    echo "🔧 Automatically repairing the configuration file..."
+    
+    if _gtr_repair_config "$config_file"; then
+      echo "✅ Configuration file has been repaired. Continuing with doctor check..."
+    else
+      echo "❌ Unable to repair configuration file. Please resolve the issue manually."
+      return 1
+    fi
+  fi
+  
+  # Read configuration patterns
+  local config_patterns=($(_gtr_read_config "$main_worktree"))
+  
+  if [[ ${#config_patterns[@]} -eq 0 ]]; then
+    echo "⚠️  No patterns found in configuration file"
+    return 1
+  fi
+  
+  echo "📋 Current configuration patterns:"
+  for pattern in "${config_patterns[@]}"; do
+    echo "  - $pattern"
+  done
+  echo ""
+  
+  # Find all local files that match patterns
+  local matching_files=()
+  local unmatched_files=()
+  
+  for pattern in "${config_patterns[@]}"; do
+    while IFS= read -r -d '' file; do
+      if [[ -f "$file" ]]; then
+        local relative_path="${file#$main_worktree/}"
+        matching_files+=("$relative_path")
+      fi
+    done < <(find "$main_worktree" -name "$pattern" -type f -print0 2>/dev/null)
+  done
+  
+  # Find all local files that don't match any pattern (exclude common directories)
+  while IFS= read -r -d '' file; do
+    if [[ -f "$file" ]]; then
+      local relative_path="${file#$main_worktree/}"
+      # Skip common directories that shouldn't be copied
+      if [[ "$relative_path" == *node_modules/* || 
+            "$relative_path" == */.next/* || 
+            "$relative_path" == .git/* || 
+            "$relative_path" == dist/* || 
+            "$relative_path" == build/* || 
+            "$relative_path" == */.pnpm/* ]]; then
+        continue
+      fi
+      
+      local matched=false
+      for pattern in "${config_patterns[@]}"; do
+        if [[ "$relative_path" == $pattern || "$(basename "$relative_path")" == $pattern ]]; then
+          matched=true
+          break
+        fi
+      done
+      if [[ "$matched" == "false" ]]; then
+        unmatched_files+=("$relative_path")
+      fi
+    fi
+  done < <(find "$main_worktree" -name "*local*" -type f -print0 2>/dev/null)
+  
+  echo "📊 Analysis results:"
+  echo "  Files matching config: ${#matching_files[@]}"
+  echo "  Local files not in config: ${#unmatched_files[@]}"
+  echo ""
+  
+  if [[ ${#matching_files[@]} -gt 0 ]]; then
+    echo "✅ Files that will be copied to worktrees:"
+    for file in "${matching_files[@]}"; do
+      echo "  - $file"
+    done
+    echo ""
+  fi
+  
+  if [[ ${#unmatched_files[@]} -gt 0 ]]; then
+    echo "⚠️  Local files that won't be copied (not in config):"
+    for file in "${unmatched_files[@]}"; do
+      echo "  - $file"
+    done
+    echo ""
+    
+    if [[ "$init_fix" == "true" ]]; then
+      echo "🔧 Adding unmatched files to configuration..."
+      for file in "${unmatched_files[@]}"; do
+        echo "$file" >> "$config_file"
+        echo "  Added: $file"
+      done
+      echo "✅ Configuration updated!"
+    else
+      echo "💡 To add these files to the configuration, run:"
+      echo "   gtr init --doctor --fix"
+    fi
+  else
+    echo "✅ All local files are covered by the configuration"
+  fi
+}
+
+gtr_doctor() {
+  local worktree_name=""
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    worktree_name="${_GTR_ARGS[1]}"
+  fi
+  local fix_mode="${_GTR_FIX_MODE:-false}"
+  local force_mode="${_GTR_FORCE_MODE:-false}"
+  local prefix="${_GTR_PREFIX:-claude}"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local current_dir="$(pwd)"
+  
+  # Detect if we're in a worktree or main repo
+  local git_dir=$(git rev-parse --git-dir)
+  local is_worktree=false
+  local main_worktree=""
+  local worktree_path=""
+  
+  if [[ "$git_dir" == *"/.git/worktrees/"* ]]; then
+    # We're in a worktree
+    is_worktree=true
+    main_worktree=$(dirname "$(dirname "$(dirname "$git_dir")")")
+    worktree_path="$current_dir"
+    echo "🔍 Running from worktree: $worktree_path"
+  else
+    # We're in the main repository
+    is_worktree=false
+    main_worktree="$current_dir"
+    echo "🔍 Running from main repository: $main_worktree"
+  fi
+  
+  # If worktree name provided, find that specific worktree
+  if [[ -n "$worktree_name" ]]; then
+    if [[ "$worktree_name" == *"/"* ]]; then
+      # Full worktree path provided
+      worktree_path="$worktree_name"
+    else
+      # Just the name, try to find the worktree using git worktree list
+      worktree_path=$(git worktree list --porcelain | awk -v name="$worktree_name" '
+        /^worktree / { worktree_path = $2 }
+        /^branch refs\/heads\// { 
+          branch = substr($0, 19)
+          if (branch ~ name || worktree_path ~ name) {
+            print worktree_path
+            exit
+          }
+        }
+      ')
+      
+      if [[ -z "$worktree_path" ]]; then
+        echo "❌ Worktree not found: $worktree_name"
+        echo "💡 Available worktrees:"
+        git worktree list
+        return 1
+      fi
+    fi
+    
+    if [[ ! -d "$worktree_path" ]]; then
+      echo "❌ Worktree not found: $worktree_path"
+      echo "💡 Available worktrees:"
+      git worktree list
+      return 1
+    fi
+  elif [[ "$is_worktree" == "false" ]]; then
+    # Running from main repo without specifying worktree name
+    echo "Usage: gtr doctor [WORKTREE_NAME] [--fix] [--prefix PREFIX] [--username USERNAME]"
+    echo "  WORKTREE_NAME: Name of the worktree to check"
+    echo "  When run from main repo, WORKTREE_NAME is required"
+    return 1
+  fi
+  
+  echo "📋 Source (main repo): $main_worktree"
+  echo "📋 Target (worktree): $worktree_path"
+  echo ""
+  
+  local missing_files=()
+  local different_files=()
+  local missing_dirs=()
+  
+  # Read configuration patterns
+  local patterns=($(_gtr_read_config "$main_worktree"))
+  
+  # Check files and directories based on configuration
+  for pattern in "${patterns[@]}"; do
+    if [[ "$pattern" == */ ]]; then
+      # Directory pattern
+      local dir_name="${pattern%/}"
+      if [[ -d "$main_worktree/$dir_name" ]]; then
+        if [[ ! -d "$worktree_path/$dir_name" ]]; then
+          missing_dirs+=("$dir_name/")
+        fi
+      fi
+    else
+      # File pattern - use find to search recursively
+      while IFS= read -r -d '' file; do
+        if [[ -f "$file" ]]; then
+          local relative_path="${file#$main_worktree/}"
+          local target_file="$worktree_path/$relative_path"
+          if [[ ! -f "$target_file" ]]; then
+            missing_files+=("$relative_path")
+          elif _gtr_files_different "$file" "$target_file"; then
+            different_files+=("$relative_path")
+          fi
+        fi
+      done < <(find "$main_worktree" -name "$pattern" -type f -print0 2>/dev/null)
+    fi
+  done
+  
+  # Report findings
+  if [[ ${#missing_files[@]} -eq 0 && ${#different_files[@]} -eq 0 && ${#missing_dirs[@]} -eq 0 ]]; then
+    echo "✅ All local files are present and up-to-date in the worktree"
+    return 0
+  fi
+  
+  if [[ ${#missing_files[@]} -gt 0 ]]; then
+    echo "❌ Missing files in worktree:"
+    for file in "${missing_files[@]}"; do
+      echo "  - $file"
+    done
+  fi
+  
+  if [[ ${#different_files[@]} -gt 0 ]]; then
+    echo "⚠️  Different files in worktree:"
+    for file in "${different_files[@]}"; do
+      echo "  - $file"
+    done
+  fi
+  
+  if [[ ${#missing_dirs[@]} -gt 0 ]]; then
+    echo "❌ Missing directories in worktree:"
+    for dir in "${missing_dirs[@]}"; do
+      echo "  - $dir"
+    done
+  fi
+  
+  if [[ "$fix_mode" == "true" ]]; then
+    echo ""
+    echo "🔧 Fixing files..."
+    _gtr_copy_local_files "$main_worktree" "$worktree_path" "$force_mode" "$main_worktree"
+    echo "✅ Fix complete!"
+  else
+    echo ""
+    echo "💡 To fix files, run:"
+    if [[ ${#different_files[@]} -gt 0 ]]; then
+      echo "   gtr doctor $worktree_name --fix --prefix $prefix --username $username"
+      echo "   (Use --force to skip interactive prompts for different files)"
+    else
+      echo "   gtr doctor $worktree_name --fix --prefix $prefix --username $username"
+    fi
+  fi
+}
+
+_gtr_show_help() {
+  cat << 'EOF'
+gtr - Git worktree helper
+
+USAGE:
+    gtr <COMMAND> [OPTIONS] [ARGS...]
+
+COMMANDS:
+    create, c <name>...           Create new worktrees
+    remove, rm <name>...          Remove worktrees (with --force, --dry-run)
+    cd <name>                     Change directory to worktree
+    list, ls, l                   List all worktrees
+    claude <name>                 Run claude in worktree directory
+    prune                         Clean up merged worktrees
+    doctor [name]                 Check worktree for missing local files
+    init                          Initialize gtr configuration
+    --help, -h                    Show this help message
+
+GLOBAL OPTIONS:
+    --prefix <PREFIX>             Set branch prefix (default: claude)
+    --username <USERNAME>         Set username for branch naming (default: current user)
+    --editor <EDITOR>             Set editor to open worktrees (default: cursor)
+    --no-open                     Don't open editor after creating worktree
+    --no-install                  Skip pnpm commands during worktree creation
+    --base <BRANCH>               Base branch for worktree creation (default: current branch)
+
+EXAMPLES:
+    # Create worktrees
+    gtr create feature0                    # Create worktree based on current branch
+    gtr create feat1 feat2                 # Create multiple worktrees
+    gtr create feature0 --base main        # Create worktree based on main branch
+    gtr create feature0 --no-install       # Skip pnpm commands
+    gtr create feature0 --no-open          # Don't open editor
+
+    # Manage worktrees
+    gtr list                               # List all worktrees
+    gtr cd feature0                        # Navigate to worktree
+    gtr claude feature0                    # Run claude in worktree
+
+    # Cleanup
+    gtr rm feature0                        # Remove worktree (with confirmation)
+    gtr rm feature0 --force                # Force remove worktree
+    gtr rm feature0 --dry-run              # Show what would be removed
+    gtr prune                              # Clean up merged worktrees
+    gtr prune --base develop --force       # Clean up with custom base branch
+
+    # Health check
+    gtr doctor feature0                    # Check specific worktree
+    gtr doctor                             # Check current directory (if it's a worktree)
+    gtr doctor feature0 --fix              # Check and fix specific worktree
+    gtr doctor --fix                       # Check and fix current worktree
+    gtr doctor --fix --force               # Fix without interactive prompts
+
+    # Configuration
+    gtr init                               # Initialize gtr configuration
+    gtr init --doctor                      # Check configuration coverage
+    gtr init --doctor --fix                # Auto-add missing files to config
+
+FEATURES:
+    • Automatic copying of .env*local* files to new worktrees (recursive search)
+    • Automatic copying of Claude settings (.claude/, .anthropic/)
+    • Automatic pnpm approve-builds and pnpm install on creation
+    • Smart branch naming with worktrees/username/name pattern
+    • Safe worktree removal with merge detection
+    • Health checking with automatic fixing (recursive .env*local* detection)
+
+For more information, visit: https://medium.com/@dtunai/mastering-git-worktrees-with-claude-code-for-parallel-development-workflow-41dc91e645fe
+EOF
+}
+
+# Main gtr function - dispatches to appropriate sub-commands
+gtr() {
+  local cmd="$1"
+  
+  # Handle help flag before parsing other arguments
+  if [[ "$cmd" == "--help" || "$cmd" == "-h" ]]; then
+    _gtr_show_help
+    return 0
+  fi
+  
+  shift || { echo "Usage: gtr {create|rm|cd|claude|prune|doctor|init} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
+
+  # Check for command-specific flags before parsing global flags
+  local fix_mode="false"
+  local force_mode="false"
+  local init_doctor="false"
+  local init_fix="false"
+  
+  if [[ "$cmd" == "doctor" ]]; then
+    for arg in "$@"; do
+      if [[ "$arg" == "--fix" ]]; then
+        fix_mode="true"
+      elif [[ "$arg" == "--force" ]]; then
+        force_mode="true"
+      fi
+    done
+  elif [[ "$cmd" == "init" ]]; then
+    for arg in "$@"; do
+      if [[ "$arg" == "--doctor" ]]; then
+        init_doctor="true"
+      elif [[ "$arg" == "--fix" ]]; then
+        init_fix="true"
+      fi
+    done
+  fi
+
+  # Parse global flags
+  _gtr_parse_global_flags "$@"
+  
+  # Export command-specific modes
+  if [[ "$cmd" == "doctor" ]]; then
+    export _GTR_FIX_MODE="$fix_mode"
+    export _GTR_FORCE_MODE="$force_mode"
+  elif [[ "$cmd" == "init" ]]; then
+    export _GTR_INIT_DOCTOR="$init_doctor"
+    export _GTR_INIT_FIX="$init_fix"
+  fi
+  
+  # Dispatch to appropriate command
+  case "$cmd" in
+    c|create)
+      gtr_create
+      ;;
+    rm|remove)
+      gtr_remove
+      ;;
+    cd)
+      gtr_cd
+      ;;
+    l|ls|list)
+      gtr_list
+      ;;
+    claude)
+      gtr_claude
+      ;;
+    prune)
+      gtr_prune
+      ;;
+    doctor)
+      gtr_doctor
+      ;;
+    init)
+      gtr_init
+      ;;
+    *)
+      echo "Unknown sub-command: $cmd (use create, rm, cd, claude, prune, doctor, init)"; return 1;;
+  esac
+}
