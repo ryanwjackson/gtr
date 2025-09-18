@@ -650,6 +650,7 @@ _gtr_parse_global_flags() {
   local no_install=false
   local username=$(whoami)
   local base_branch=""
+  local untracked=""
   local args=()
   
   
@@ -659,6 +660,7 @@ _gtr_parse_global_flags() {
   local config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
   local config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
   local config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
+  local config_untracked="$(_gtr_read_config_setting "$main_worktree" "settings" "untracked" "true")"
   
   # Set defaults from config
   prefix="$config_prefix"
@@ -721,6 +723,15 @@ _gtr_parse_global_flags() {
           return 1
         fi
         ;;
+      --untracked)
+        if [[ -n "$2" ]]; then
+          untracked="$2"
+          shift 2
+        else
+          echo "Error: --untracked requires a value (true or false)"
+          return 1
+        fi
+        ;;
       *)
         args+=("$1")
         shift
@@ -737,6 +748,11 @@ _gtr_parse_global_flags() {
     no_install=true
   fi
   
+  # Set untracked default from config if not specified
+  if [[ -z "$untracked" ]]; then
+    untracked="$config_untracked"
+  fi
+  
   
   # Export variables for use in other functions
   export _GTR_PREFIX="$prefix"
@@ -745,6 +761,7 @@ _gtr_parse_global_flags() {
   export _GTR_NO_INSTALL="$no_install"
   export _GTR_USERNAME="$username"
   export _GTR_BASE_BRANCH="$base_branch"
+  export _GTR_UNTRACKED="$untracked"
   
   # Set _GTR_ARGS in the global scope
   _GTR_ARGS=("${args[@]}")
@@ -757,11 +774,41 @@ _gtr_create_worktree() {
   local base="$(_gtr_get_base_dir)"
   local branch_name="$(_gtr_get_worktree_branch_name "$name")"
   local main_worktree="$(_gtr_get_main_worktree)"
+  local current_branch="$(git rev-parse --abbrev-ref HEAD)"
+  local untracked="${_GTR_UNTRACKED:-true}"
+  
+  # Validate that --untracked only works when --base is current branch
+  if [[ "$untracked" == "true" && "$base_branch" != "$current_branch" ]]; then
+    echo "❌ Error: --untracked=true can only be used when --base is the current branch"
+    echo "   Current branch: $current_branch"
+    echo "   Base branch: $base_branch"
+    echo "   Use --untracked=false to create worktree from a different base branch"
+    return 1
+  fi
   
   # Check if branch already exists
   if git show-ref --verify --quiet "refs/heads/$branch_name"; then
     echo "Branch '$branch_name' already exists. Skipping '$name'."
     return 1
+  fi
+  
+  # Handle untracked changes if requested
+  local temp_commit=""
+  if [[ "$untracked" == "true" ]]; then
+    # Check if there are untracked files
+    local untracked_files=$(git ls-files --others --exclude-standard)
+    if [[ -n "$untracked_files" ]]; then
+      echo "📁 Including untracked changes in worktree..."
+      
+      # Create a temporary commit with untracked files
+      git add .
+      temp_commit=$(git commit -m "temp: include untracked changes for worktree" --no-verify)
+      
+      if [[ $? -ne 0 ]]; then
+        echo "❌ Failed to create temporary commit for untracked changes"
+        return 1
+      fi
+    fi
   fi
   
   # Create worktree and branch from the specified base
@@ -774,6 +821,13 @@ _gtr_create_worktree() {
     # Run pnpm commands if not disabled
     _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
     
+    # Clean up temporary commit if it was created
+    if [[ -n "$temp_commit" ]]; then
+      echo "🧹 Cleaning up temporary commit..."
+      git reset --soft HEAD~1
+      git reset HEAD .
+    fi
+    
     if [[ "$_GTR_NO_OPEN" == "false" ]]; then
       echo "Opening '$base/$name' with $_GTR_EDITOR"
       $_GTR_EDITOR "$base/$name"
@@ -783,6 +837,13 @@ _gtr_create_worktree() {
     return 0
   else
     echo "Failed to create worktree '$name'"
+    
+    # Clean up temporary commit if worktree creation failed
+    if [[ -n "$temp_commit" ]]; then
+      echo "🧹 Cleaning up temporary commit..."
+      git reset --soft HEAD~1
+      git reset HEAD .
+    fi
     return 1
   fi
 }
@@ -1843,6 +1904,7 @@ GLOBAL OPTIONS:
     --no-open                     Don't open editor after creating worktree
     --no-install                  Skip pnpm commands during worktree creation
     --base <BRANCH>               Base branch for worktree creation (default: current branch)
+    --untracked <true|false>      Include untracked changes in worktree (default: true)
 
 EXAMPLES:
     # Create worktrees
@@ -1851,6 +1913,8 @@ EXAMPLES:
     gtr create feature0 --base main        # Create worktree based on main branch
     gtr create feature0 --no-install       # Skip pnpm commands
     gtr create feature0 --no-open          # Don't open editor
+    gtr create feature0 --untracked false  # Don't include untracked changes
+    gtr create feature0 --base main --untracked false  # Create from main without untracked
 
     # Manage worktrees
     gtr list                               # List all worktrees

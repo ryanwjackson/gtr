@@ -21,7 +21,7 @@ _gtr_subcommands() {
 }
 
 _gtr_global_opts() {
-  echo "--prefix --username --editor --no-open --no-install --base"
+  echo "--prefix --username --editor --no-open --no-install --base --untracked"
 }
 
 _gtr_remove_opts() {
