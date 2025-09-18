@@ -11,6 +11,20 @@ gtr is a lightweight helper around git worktrees that speeds up parallel develop
 - **Smart naming**: branches like `worktrees/<username>/<name>`
 
 ### Installation
+
+#### Homebrew (recommended)
+```bash
+brew tap ryanwjackson/tap
+brew install ryanwjackson/tap/gtr
+```
+
+To upgrade to the latest version:
+```bash
+brew update
+brew upgrade gtr
+```
+
+#### Manual installation
 1) Put `bin/gtr` somewhere on your PATH, or symlink it:
 ```bash
 chmod +x bin/gtr
