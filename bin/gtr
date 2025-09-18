@@ -35,6 +35,33 @@ _gtr_get_base_dir() {
   echo "${GTR_BASE_DIR:-$HOME/Documents/dev/worktrees}"
 }
 
+# Helper function for interactive user input
+# Usage: _gtr_ask_user "prompt" "default_value"
+# Returns: user input or default value if no interactive input available
+_gtr_ask_user() {
+  local prompt="$1"
+  local default_value="${2:-}"
+  
+  printf "%s" "$prompt"
+  
+  if [[ -t 0 ]] && read -r reply; then
+    # Terminal input available, use user input
+    echo "$reply"
+  else
+    # No interactive input available, return default
+    echo "$default_value"
+  fi
+}
+
+# Helper function for generating worktree branch names
+# Usage: _gtr_get_worktree_branch_name "worktree_name"
+# Returns: worktrees/username/worktree_name
+_gtr_get_worktree_branch_name() {
+  local worktree_name="$1"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  echo "worktrees/$username/$worktree_name"
+}
+
 _gtr_read_config() {
   local main_worktree="$1"
   local config_file="$main_worktree/.gtr/config"
@@ -176,7 +203,8 @@ _gtr_handle_malformed_config() {
   echo ""
   
   while true; do
-    read -p "Choose an option (1-4): " choice
+    local choice
+    choice=$(_gtr_ask_user "Choose an option (1-4): " "4")
     case $choice in
       1)
         echo "🔄 Creating fresh configuration..."
@@ -493,8 +521,8 @@ _gtr_interactive_overwrite() {
   echo ""
   
   while true; do
-    printf "Choose [y/n/d/m]: "
-    read -r choice
+    local choice
+    choice=$(_gtr_ask_user "Choose [y/n/d/m]: " "n")
     case "$choice" in
       [yY]|[yY][eE][sS])
         echo "🔄 Overwriting with main repo version..."
@@ -559,6 +587,7 @@ _gtr_parse_global_flags() {
   local username=$(whoami)
   local base_branch=""
   local args=()
+  
   
   # Read default values from config
   local config_prefix="$(_gtr_read_config_setting "$main_worktree" "settings" "prefix" "claude")"
@@ -644,6 +673,7 @@ _gtr_parse_global_flags() {
     no_install=true
   fi
   
+  
   # Export variables for use in other functions
   export _GTR_PREFIX="$prefix"
   export _GTR_EDITOR="$editor"
@@ -651,14 +681,17 @@ _gtr_parse_global_flags() {
   export _GTR_NO_INSTALL="$no_install"
   export _GTR_USERNAME="$username"
   export _GTR_BASE_BRANCH="$base_branch"
-  export _GTR_ARGS=("${args[@]}")
+  
+  # Set _GTR_ARGS in the global scope
+  _GTR_ARGS=("${args[@]}")
+  export _GTR_ARGS
 }
 
 _gtr_create_worktree() {
   local name="$1"
   local base_branch="${_GTR_BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
   local base="$(_gtr_get_base_dir)"
-  local branch_name="worktrees/$_GTR_USERNAME/$name"
+  local branch_name="$(_gtr_get_worktree_branch_name "$name")"
   local main_worktree="$(_gtr_get_main_worktree)"
   
   # Check if branch already exists
@@ -695,14 +728,42 @@ _gtr_remove_worktree() {
   local force="$2"
   local dry_run="$3"
   local base="$(_gtr_get_base_dir)"
-  local branch_name="worktrees/$_GTR_USERNAME/$name"
+  local branch_name="$(_gtr_get_worktree_branch_name "$name")"
+  local worktree_path=""
+  local worktree_branch=""
   
-  # Get the actual branch the worktree is on before removing it
-  local worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $base/$name" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
+  # First, try to find the worktree by directory name
+  if [[ -d "$base/$name" ]]; then
+    worktree_path="$base/$name"
+    # Get the actual branch the worktree is on
+    worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $worktree_path" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
+  else
+    # Try to find worktree by branch name if directory not found
+    worktree_branch="$name"
+    worktree_path=$(git worktree list --porcelain | awk -v branch="$worktree_branch" '
+      /^worktree / { 
+        worktree_path = $2
+      }
+      /^branch refs\/heads\// { 
+        current_branch = substr($0, 19)
+        if (current_branch == branch) {
+          print worktree_path
+          exit
+        }
+      }
+    ')
+    
+    if [[ -z "$worktree_path" ]]; then
+      echo "❌ Worktree not found: $name"
+      echo "💡 Available worktrees:"
+      git worktree list
+      return 1
+    fi
+  fi
   
   # Try alternative method if the first one didn't work
   if [[ -z "$worktree_branch" ]]; then
-    worktree_branch=$(git worktree list --porcelain | awk -v worktree="$base/$name" '
+    worktree_branch=$(git worktree list --porcelain | awk -v worktree="$worktree_path" '
       /^worktree/ { 
         if ($0 ~ worktree) { 
           found=1; next 
@@ -732,7 +793,7 @@ _gtr_remove_worktree() {
   fi
   
   if [[ "$dry_run" == "true" ]]; then
-    echo "🔍 [DRY RUN] Would remove worktree: $base/$name"
+    echo "🔍 [DRY RUN] Would remove worktree: $worktree_path"
     if [[ -n "$branch_to_check" ]]; then
       # Safeguard: Never delete main/master branches
       if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
@@ -754,7 +815,7 @@ _gtr_remove_worktree() {
     fi
   else
     # Remove the worktree
-    if git worktree remove "$base/$name"; then
+    if git worktree remove "$worktree_path"; then
       echo "Removed worktree '$name'"
       
       # Check if we can safely delete the branch
@@ -821,7 +882,16 @@ _gtr_prune_worktrees() {
   echo "🧹 Cleaning up merged worktrees (base: $base_branch)..."
   
   # Parse worktrees using a more robust approach
-  git worktree list --porcelain | awk -v main_worktree="$main_worktree" '
+  local -a worktree_paths
+  local -a branch_names
+  
+  # Read worktree data into arrays
+  while IFS='|' read -r worktree_path branch_name; do
+    if [[ -n "$worktree_path" && -n "$branch_name" ]]; then
+      worktree_paths+=("$worktree_path")
+      branch_names+=("$branch_name")
+    fi
+  done < <(git worktree list --porcelain | awk -v main_worktree="$main_worktree" '
     /^worktree / {
       worktree_path = $2
       if (worktree_path != main_worktree) {
@@ -840,55 +910,59 @@ _gtr_prune_worktrees() {
         }
       }
     }
-  ' | while IFS='|' read -r worktree_path branch_name; do
-    if [[ -n "$worktree_path" && -n "$branch_name" ]]; then
-      local should_remove=false
-      local reason=""
-      
-      # Check if branch is merged using multiple strategies
-      if git branch --merged "$base_branch" | grep -q "^[[:space:]]*$branch_name$"; then
+  ')
+  
+  # Process each worktree
+  for i in "${!worktree_paths[@]}"; do
+    local worktree_path="${worktree_paths[$i]}"
+    local branch_name="${branch_names[$i]}"
+    
+    local should_remove=false
+    local reason=""
+    
+    # Check if branch is merged using multiple strategies
+    if git branch --merged "$base_branch" | grep -q "^[[:space:]]*$branch_name$"; then
+      should_remove=true
+      reason="merged into $base_branch"
+    elif git merge-base --is-ancestor "$branch_name" "$base_branch" 2>/dev/null; then
+      should_remove=true
+      reason="ancestor of $base_branch"
+    else
+      # Check if the branch's commits are all in the base branch (squash merge case)
+      local branch_commits=$(git rev-list "$branch_name" --not "$base_branch" 2>/dev/null | wc -l)
+      if [[ "$branch_commits" -eq 0 ]]; then
         should_remove=true
-        reason="merged into $base_branch"
-      elif git merge-base --is-ancestor "$branch_name" "$base_branch" 2>/dev/null; then
-        should_remove=true
-        reason="ancestor of $base_branch"
-      else
-        # Check if the branch's commits are all in the base branch (squash merge case)
-        local branch_commits=$(git rev-list "$branch_name" --not "$base_branch" 2>/dev/null | wc -l)
-        if [[ "$branch_commits" -eq 0 ]]; then
-          should_remove=true
-          reason="all commits present in $base_branch (squash merged)"
-        fi
+        reason="all commits present in $base_branch (squash merged)"
       fi
-      
-      if [[ "$should_remove" == "true" ]]; then
-        if [[ "$dry_run" == "true" ]]; then
-          echo "🔍 [DRY RUN] Would remove: $worktree_path ($branch_name) - $reason"
+    fi
+    
+    if [[ "$should_remove" == "true" ]]; then
+      if [[ "$dry_run" == "true" ]]; then
+        echo "🔍 [DRY RUN] Would remove: $worktree_path ($branch_name) - $reason"
+      else
+        if [[ "$force" == "true" ]]; then
+          echo "🗑️  Removing: $worktree_path ($branch_name) - $reason"
+          git worktree remove "$worktree_path" 2>/dev/null && \
+          git branch -d "$branch_name" 2>/dev/null || \
+          echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
         else
-          if [[ "$force" == "true" ]]; then
-            echo "🗑️  Removing: $worktree_path ($branch_name) - $reason"
-            git worktree remove "$worktree_path" 2>/dev/null && \
-            git branch -d "$branch_name" 2>/dev/null || \
-            echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
-          else
-            printf "Remove worktree '%s' (%s) - %s? [y/N] " "$worktree_path" "$branch_name" "$reason"
-            read -r reply
-            case "$reply" in
-              [yY]|[yY][eE][sS])
-                echo "🗑️  Removing: $worktree_path ($branch_name)"
-                git worktree remove "$worktree_path" 2>/dev/null && \
-                git branch -d "$branch_name" 2>/dev/null || \
-                echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
-                ;;
-              *)
-                echo "⏭️  Skipped: $worktree_path ($branch_name)"
-                ;;
-            esac
-          fi
+          local reply
+          reply=$(_gtr_ask_user "Remove worktree '$worktree_path' ($branch_name) - $reason? [y/N] " "N")
+          case "$reply" in
+            [yY]|[yY][eE][sS])
+              echo "🗑️  Removing: $worktree_path ($branch_name)"
+              git worktree remove "$worktree_path" 2>/dev/null && \
+              git branch -d "$branch_name" 2>/dev/null || \
+              echo "⚠️  Could not remove worktree or branch: $worktree_path ($branch_name)"
+              ;;
+            *)
+              echo "⏭️  Skipped: $worktree_path ($branch_name)"
+              ;;
+          esac
         fi
-      else
-        echo "✅ Keeping: $worktree_path ($branch_name) - not merged"
       fi
+    else
+      echo "✅ Keeping: $worktree_path ($branch_name) - not merged"
     fi
   done
   
@@ -977,11 +1051,11 @@ gtr_claude() {
 
   if [ ! -d "$dir" ]; then
     # Prompt in a shell-agnostic way
-    printf "Worktree '%s' doesn't exist. Create it now? [y/N] " "$name"
-    read -r reply
+    local reply
+    reply=$(_gtr_ask_user "Worktree '$name' doesn't exist. Create it now? [y/N] " "N")
     case "$reply" in
       [yY]|[yY][eE][sS])
-        local branch_name="worktrees/$_GTR_USERNAME/$name"
+        local branch_name="$(_gtr_get_worktree_branch_name "$name")"
         
         # Check if branch already exists
         if git show-ref --verify --quiet "refs/heads/$branch_name"; then
@@ -1077,8 +1151,9 @@ _gtr_init_config() {
     echo ""
     
     while true; do
-      printf "Choose [overwrite/diff/merge/skip]: "
-      if ! read -r choice; then
+      local choice
+      choice=$(_gtr_ask_user "Choose [overwrite/diff/merge/skip]: " "skip")
+      if [[ -z "$choice" ]]; then
         echo "No input available, skipping configuration update"
         break
       fi

@@ -1,0 +1,40 @@
+# gtr configuration file
+# This file defines gtr behavior and which files should be copied to worktrees
+
+[files_to_copy]
+# File patterns to copy (glob patterns, one per line)
+# Default patterns for local environment files
+.env*local*
+.env.*local*
+
+# Claude settings directories
+.claude/
+.anthropic/
+
+# Add more patterns as needed
+# Example:
+# config/local.json
+# secrets/*.local
+
+[settings]
+# Default editor to open worktrees
+editor=cursor
+
+# Default branch prefix for worktrees
+prefix=claude
+
+# Whether to run pnpm commands by default
+run_pnpm=true
+
+# Whether to open editor after creating worktree
+auto_open=true
+
+# Base directory for worktrees (relative to main repo or absolute path)
+# worktree_base=../worktrees
+
+[doctor]
+# Whether to show detailed diff information
+show_detailed_diffs=false
+
+# Whether to auto-fix missing files without prompts
+auto_fix=false
