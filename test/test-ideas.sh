@@ -670,7 +670,7 @@ main() {
   register_test "idea_list_empty" test_idea_list_empty
   register_test "ensure_ideas_dir" test_ensure_ideas_dir
   register_test "generate_idea_filename" test_generate_idea_filename
-  register_test "generate_idea_filename_special_chars" test_generate_idea_filename_special_chars
+  register_test_with_debug "generate_idea_filename_special_chars" test_generate_idea_filename_special_chars
   register_test "get_repo_info" test_get_repo_info
   register_test "create_idea_content" test_create_idea_content
   register_test "idea_create_with_summary" test_idea_create_with_summary
