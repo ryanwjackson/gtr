@@ -791,7 +791,7 @@ _gtr_parse_global_flags() {
         echo "Please use --untracked instead"
         return 1
         ;;
-      --force|--dry-run)
+      --force|--dry-run|--mine|--todo|--status=*|--filter=*)
         # These are command-specific flags, pass them through
         args+=("$1")
         shift
@@ -799,7 +799,7 @@ _gtr_parse_global_flags() {
       --*)
         echo "Error: Unknown option '$1'"
         echo "Valid global options: --prefix, --username, --editor, --no-open, --no-install, --base, --untracked"
-        echo "Command-specific options: --force, --dry-run (for rm command)"
+        echo "Command-specific options: --force, --dry-run (for rm command), --mine, --todo, --status, --filter (for idea command)"
         return 1
         ;;
       *)
@@ -2122,6 +2122,412 @@ gtr_doctor() {
   fi
 }
 
+# Idea management helper functions
+
+# Helper function to get ideas directory
+# Usage: _gtr_get_ideas_dir
+# Returns: path to .gtr/ideas directory
+_gtr_get_ideas_dir() {
+  local main_worktree="$(_gtr_get_main_worktree)"
+  echo "$main_worktree/.gtr/ideas"
+}
+
+# Helper function to create ideas directory if it doesn't exist
+# Usage: _gtr_ensure_ideas_dir
+# Returns: 0 on success, 1 on failure
+_gtr_ensure_ideas_dir() {
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  
+  if [[ ! -d "$ideas_dir" ]]; then
+    if mkdir -p "$ideas_dir" 2>/dev/null; then
+      echo "📁 Created ideas directory: $ideas_dir"
+      return 0
+    else
+      echo "❌ Failed to create ideas directory: $ideas_dir" >&2
+      return 1
+    fi
+  fi
+  
+  return 0
+}
+
+# Helper function to generate idea filename
+# Usage: _gtr_generate_idea_filename "summary"
+# Returns: filename in format [ISO_DATETIME]_[username]_[summary].md
+_gtr_generate_idea_filename() {
+  local summary="$1"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local datetime=$(date -u +"%Y%m%dT%H%M%SZ")
+  
+  # Sanitize summary for filename (replace spaces with hyphens, remove special chars)
+  local sanitized_summary=$(echo "$summary" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+  
+  # Limit length to avoid filesystem issues
+  if [[ ${#sanitized_summary} -gt 50 ]]; then
+    sanitized_summary="${sanitized_summary:0:50}"
+  fi
+  
+  echo "${datetime}_${username}_${sanitized_summary}.md"
+}
+
+# Helper function to get repository information
+# Usage: _gtr_get_repo_info
+# Returns: array with repo_name, repo_url, current_branch, latest_commit
+_gtr_get_repo_info() {
+  local repo_name="$(_gtr_get_repo_name)"
+  local repo_url=$(git remote get-url origin 2>/dev/null || echo "")
+  local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  local latest_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+  
+  echo "$repo_name|$repo_url|$current_branch|$latest_commit"
+}
+
+# Helper function to create idea file content
+# Usage: _gtr_create_idea_content "summary" "repo_name" "repo_url" "current_branch" "latest_commit"
+# Returns: markdown content for idea file
+_gtr_create_idea_content() {
+  local summary="$1"
+  local repo_name="$2"
+  local repo_url="$3"
+  local current_branch="$4"
+  local latest_commit="$5"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local datetime=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  cat << EOF
+---
+summary: "$summary"
+author: "$username"
+datetime: "$datetime"
+repo_name: "$repo_name"
+repo_url: "$repo_url"
+current_branch_name: "$current_branch"
+latest_commit: "$latest_commit"
+status: "TODO"
+---
+
+# $summary
+
+## Description
+
+<!-- Add your idea description here -->
+
+## Implementation Notes
+
+<!-- Add implementation details here -->
+
+## Acceptance Criteria
+
+<!-- Add acceptance criteria here -->
+
+## Related Issues/PRs
+
+<!-- Add related issues or PRs here -->
+EOF
+}
+
+# Helper function to get all worktree directories
+# Usage: _gtr_get_all_worktree_dirs
+# Returns: array of all worktree directories including main repo
+_gtr_get_all_worktree_dirs() {
+  local main_worktree="$(_gtr_get_main_worktree)"
+  local worktree_dirs=("$main_worktree")
+  
+  # Get all worktrees from git
+  while IFS= read -r worktree_path; do
+    if [[ -n "$worktree_path" && "$worktree_path" != "$main_worktree" ]]; then
+      worktree_dirs+=("$worktree_path")
+    fi
+  done < <(git worktree list --porcelain | grep "^worktree " | cut -d' ' -f2- 2>/dev/null)
+  
+  echo "${worktree_dirs[@]}"
+}
+
+# Helper function to list ideas with filtering
+# Usage: _gtr_list_ideas [--mine] [--todo] [--status=STATUS] [--filter=STRING]
+# Returns: list of idea files with metadata
+_gtr_list_ideas() {
+  local show_mine="false"
+  local show_todo="false"
+  local status_filter=""
+  local content_filter=""
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  
+  # Parse arguments
+  for arg in "$@"; do
+    case "$arg" in
+      --mine)
+        show_mine="true"
+        ;;
+      --todo)
+        show_todo="true"
+        ;;
+      --status=*)
+        status_filter="${arg#*=}"
+        ;;
+      --filter=*)
+        content_filter="${arg#*=}"
+        ;;
+    esac
+  done
+  
+  # Get all worktree directories
+  local worktree_dirs=($(_gtr_get_all_worktree_dirs))
+  local idea_files=()
+  
+  # Search for idea files in all worktrees
+  for worktree_dir in "${worktree_dirs[@]}"; do
+    local ideas_dir="$worktree_dir/.gtr/ideas"
+    if [[ -d "$ideas_dir" ]]; then
+      while IFS= read -r -d '' file; do
+        if [[ -f "$file" && "$file" == *.md ]]; then
+          idea_files+=("$file")
+        fi
+      done < <(find "$ideas_dir" -name "*.md" -type f -print0 2>/dev/null)
+    fi
+  done
+  
+  if [[ ${#idea_files[@]} -eq 0 ]]; then
+    echo "No ideas found. Create your first idea with 'gtr idea create'"
+    return 0
+  fi
+  
+  # Sort by creation date (newest first) using filename timestamp
+  IFS=$'\n' idea_files=($(printf '%s\n' "${idea_files[@]}" | sort -r))
+  
+  echo "📋 Ideas:"
+  echo ""
+  
+  for file in "${idea_files[@]}"; do
+    local filename=$(basename "$file")
+    local worktree_name=$(basename "$(dirname "$(dirname "$file")")")
+    local author=""
+    local summary=""
+    local status=""
+    local datetime=""
+    local repo_name=""
+    local current_branch=""
+    
+    # Extract metadata from YAML front matter
+    local in_frontmatter=false
+    while IFS= read -r line; do
+      if [[ "$line" == "---" ]]; then
+        if [[ "$in_frontmatter" == "false" ]]; then
+          in_frontmatter=true
+        else
+          break
+        fi
+      elif [[ "$in_frontmatter" == "true" ]]; then
+        case "$line" in
+          author:*)
+            author="${line#author: }"
+            author="${author%\"}"
+            author="${author#\"}"
+            ;;
+          summary:*)
+            summary="${line#summary: }"
+            summary="${summary%\"}"
+            summary="${summary#\"}"
+            ;;
+          status:*)
+            status="${line#status: }"
+            status="${status%\"}"
+            status="${status#\"}"
+            ;;
+          datetime:*)
+            datetime="${line#datetime: }"
+            datetime="${datetime%\"}"
+            datetime="${datetime#\"}"
+            ;;
+          repo_name:*)
+            repo_name="${line#repo_name: }"
+            repo_name="${repo_name%\"}"
+            repo_name="${repo_name#\"}"
+            ;;
+          current_branch_name:*)
+            current_branch="${line#current_branch_name: }"
+            current_branch="${current_branch%\"}"
+            current_branch="${current_branch#\"}"
+            ;;
+        esac
+      fi
+    done < "$file"
+    
+    # Apply filters
+    local should_show=true
+    
+    if [[ "$show_mine" == "true" && "$author" != "$username" ]]; then
+      should_show=false
+    fi
+    
+    if [[ "$show_todo" == "true" && "$status" != "TODO" ]]; then
+      should_show=false
+    fi
+    
+    if [[ -n "$status_filter" && "$status" != "$status_filter" ]]; then
+      should_show=false
+    fi
+    
+    # Apply content filter (search in summary and file content)
+    if [[ -n "$content_filter" ]]; then
+      local content_matches=false
+      
+      # Check if summary matches (case-insensitive)
+      local summary_lower=$(echo "$summary" | tr '[:upper:]' '[:lower:]')
+      local filter_lower=$(echo "$content_filter" | tr '[:upper:]' '[:lower:]')
+      if [[ "$summary_lower" == *"$filter_lower"* ]]; then
+        content_matches=true
+      fi
+      
+      # Check if file content matches (excluding frontmatter, case-insensitive)
+      if [[ "$content_matches" == "false" ]]; then
+        local in_frontmatter=false
+        while IFS= read -r line; do
+          if [[ "$line" == "---" ]]; then
+            if [[ "$in_frontmatter" == "false" ]]; then
+              in_frontmatter=true
+            else
+              in_frontmatter=false
+            fi
+          elif [[ "$in_frontmatter" == "false" ]]; then
+            local line_lower=$(echo "$line" | tr '[:upper:]' '[:lower:]')
+            if [[ "$line_lower" == *"$filter_lower"* ]]; then
+              content_matches=true
+              break
+            fi
+          fi
+        done < "$file"
+      fi
+      
+      if [[ "$content_matches" == "false" ]]; then
+        should_show=false
+      fi
+    fi
+    
+    if [[ "$should_show" == "true" ]]; then
+      # Format datetime for display
+      local display_date=""
+      if [[ -n "$datetime" ]]; then
+        display_date=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$datetime" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$datetime")
+      fi
+      
+      # Display idea with worktree info
+      echo "📄 $filename"
+      echo "   Summary: $summary"
+      echo "   Author:  $author"
+      echo "   Status:  $status"
+      echo "   Date:    $display_date"
+      if [[ "$worktree_name" != "$(basename "$main_worktree")" ]]; then
+        echo "   Worktree: $worktree_name ($current_branch)"
+      else
+        echo "   Worktree: main ($current_branch)"
+      fi
+      echo ""
+    fi
+  done
+}
+
+# Idea management commands
+
+gtr_idea_create() {
+  local summary=""
+  
+  # Check if summary was provided as argument
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    summary="${_GTR_ARGS[0]}"
+  fi
+  
+  # If no summary provided, prompt for it
+  if [[ -z "$summary" ]]; then
+    summary=$(_gtr_ask_user "Enter idea summary: " "")
+    if [[ -z "$summary" ]]; then
+      echo "❌ No summary provided. Idea creation cancelled."
+      return 1
+    fi
+  fi
+  
+  # Ensure ideas directory exists
+  if ! _gtr_ensure_ideas_dir; then
+    return 1
+  fi
+  
+  # Get repository information
+  local repo_info="$(_gtr_get_repo_info)"
+  IFS='|' read -r repo_name repo_url current_branch latest_commit <<< "$repo_info"
+  
+  # Generate filename and file path
+  local filename="$(_gtr_generate_idea_filename "$summary")"
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local file_path="$ideas_dir/$filename"
+  
+  # Create idea file content
+  local content="$(_gtr_create_idea_content "$summary" "$repo_name" "$repo_url" "$current_branch" "$latest_commit")"
+  
+  # Write idea file
+  if echo "$content" > "$file_path"; then
+    echo "✅ Created idea: $filename"
+    echo "📁 Location: $file_path"
+    
+    # Open in editor if configured
+    local editor="${_GTR_EDITOR:-cursor}"
+    if command -v "$editor" >/dev/null 2>&1; then
+      echo "🔧 Opening in $editor..."
+      "$editor" "$file_path"
+    else
+      echo "💡 Open with: $editor \"$file_path\""
+    fi
+  else
+    echo "❌ Failed to create idea file: $file_path"
+    return 1
+  fi
+}
+
+gtr_idea_list() {
+  # Parse arguments for filtering
+  local filter_args=()
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --mine|--todo|--status=*|--filter=*)
+        filter_args+=("$arg")
+        ;;
+    esac
+  done
+  
+  # List ideas with filters
+  _gtr_list_ideas "${filter_args[@]}"
+}
+
+gtr_idea() {
+  local subcmd="${_GTR_ARGS[0]:-}"
+  
+  # Check if first argument is a known subcommand
+  case "$subcmd" in
+    c|create|l|list)
+      # Remove the subcommand from args
+      if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+        _GTR_ARGS=("${_GTR_ARGS[@]:1}")
+      fi
+      
+      case "$subcmd" in
+        c|create)
+          gtr_idea_create
+          ;;
+        l|list)
+          gtr_idea_list
+          ;;
+      esac
+      ;;
+    "")
+      # Default to create when no subcommand provided
+      gtr_idea_create
+      ;;
+    *)
+      # If first argument doesn't look like a subcommand, treat it as a summary for create
+      gtr_idea_create
+      ;;
+  esac
+}
+
 _gtr_show_help() {
   cat << 'EOF'
 gtr - Git worktree helper
@@ -2135,6 +2541,7 @@ COMMANDS:
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
+    idea, i [summary|list]        Manage idea files (default: create)
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -2166,6 +2573,14 @@ EXAMPLES:
     gtr cd feature0                        # Navigate to worktree
     gtr claude feature0                    # Run claude in worktree
     gtr cursor feature0                    # Run cursor in worktree
+
+    # Manage ideas
+    gtr idea                               # Create new idea (prompt for summary)
+    gtr idea 'New feature'                 # Create idea with summary
+    gtr idea list                          # List all ideas
+    gtr idea list --mine                   # List your ideas
+    gtr idea list --todo                   # List TODO ideas
+    gtr idea list --filter=bug             # Search for 'bug' in titles/content
 
     # Run tools with arguments
     gtr claude feature0 -- --model sonnet  # Run claude with specific model
@@ -2275,6 +2690,9 @@ gtr() {
     l|ls|list)
       gtr_list
       ;;
+    i|idea)
+      gtr_idea
+      ;;
     claude)
       gtr_claude
       ;;
@@ -2291,7 +2709,7 @@ gtr() {
       gtr_init
       ;;
     *)
-      echo "Unknown sub-command: $cmd (use create, rm, cd, claude, cursor, prune, doctor, init)"; return 1;;
+      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, claude, cursor, prune, doctor, init)"; return 1;;
   esac
 }
 

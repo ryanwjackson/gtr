@@ -12,10 +12,11 @@ The gtr utility now includes a comprehensive testing framework that ensures code
 - **test/test-runner.sh** - Central test runner with reporting
 
 ### Test Coverage
-- **23 total tests** across 3 test suites
+- **30+ total tests** across 4 test suites
 - **Core module**: 7 tests (utilities, version, help, repo detection)
 - **Config module**: 8 tests (configuration parsing, validation, repair)
 - **Files module**: 8 tests (file operations, copying, pattern matching)
+- **Ideas module**: 8+ tests (idea creation, listing, filtering, cross-worktree search)
 
 ## Running Tests
 
@@ -28,6 +29,7 @@ The gtr utility now includes a comprehensive testing framework that ensures code
 ./test/test-runner.sh core    # Core functions
 ./test/test-runner.sh config  # Configuration management
 ./test/test-runner.sh files   # File operations
+./test/test-runner.sh ideas   # Idea management
 
 # List available tests
 ./test/test-runner.sh --list
@@ -36,6 +38,7 @@ The gtr utility now includes a comprehensive testing framework that ensures code
 bash test/test-core.sh
 bash test/test-config.sh
 bash test/test-files.sh
+bash test/test-ideas.sh
 ```
 
 ### Continuous Integration
@@ -178,6 +181,7 @@ Test individual functions in isolation:
 - Configuration parsing
 - File operations
 - Git command wrappers
+- Idea management functions
 
 ### Integration Tests
 Test module interactions:

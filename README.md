@@ -11,6 +11,7 @@ gtr is a lightweight helper around git worktrees that speeds up parallel develop
 - **Safe removal/pruning**: detects merged branches and offers dry-run/force
 - **Doctor**: verifies and fixes missing or diverged local files
 - **Smart naming**: branches like `worktrees/<username>/<name>`
+- **Idea management**: `gtr idea create` and `gtr idea list` for tracking development ideas
 
 ### Installation
 
@@ -101,6 +102,14 @@ gtr list
 gtr cd feature0
 gtr claude feature0
 
+# Idea management
+gtr idea                                  # create new idea (prompt for summary)
+gtr idea 'New feature idea'               # create idea with summary
+gtr idea list                             # list all ideas across worktrees
+gtr idea list --mine                      # list your ideas only
+gtr idea list --todo                      # list TODO status ideas
+gtr idea list --filter=performance        # search ideas by content
+
 # Cleanup
 gtr rm feature0 --dry-run                 # preview removal
 gtr prune --base develop --force          # remove merged worktrees
@@ -127,6 +136,44 @@ gtr init --doctor --fix                   # analyze and auto-add missing local f
 - **prune**: `--base`, `--dry-run`, `--force`
 - **doctor**: `--fix`, `--force`
 - **init**: `--doctor`, `--fix`
+- **idea list**: `--mine`, `--todo`, `--status=STATUS`, `--filter=STRING`
+
+### Idea Management
+
+gtr includes a built-in idea management system for tracking development ideas across worktrees:
+
+#### Creating Ideas
+```bash
+gtr idea                                  # Prompt for idea summary (default)
+gtr idea 'Performance optimization'       # Create with summary
+gtr i 'Quick idea'                        # Short form
+```
+
+Ideas are stored as markdown files in `.gtr/ideas/` with YAML frontmatter containing:
+- `summary`: Idea title/summary
+- `author`: Your username
+- `datetime`: ISO timestamp
+- `repo_name`: Repository name
+- `repo_url`: Repository URL
+- `current_branch_name`: Branch where created
+- `latest_commit`: Full commit hash
+- `status`: Status (default: "TODO")
+
+#### Listing Ideas
+```bash
+gtr idea list                             # List all ideas across worktrees
+gtr idea list --mine                      # Show only your ideas
+gtr idea list --todo                      # Show only TODO status
+gtr idea list --status=IN_PROGRESS        # Show specific status
+gtr idea list --filter=performance        # Search by content (case-insensitive)
+gtr i l --filter=bug                      # Short form with filter
+```
+
+Ideas are automatically:
+- **Ordered chronologically** (newest first)
+- **Searched across all worktrees** and main repository
+- **Filtered by content** in both title and markdown body
+- **Displayed with worktree context** showing where each idea was created
 
 ### Configuration (.gtr/config)
 INI-like sections in your main repository:
@@ -174,13 +221,14 @@ gtr/
 Run the comprehensive test suite to ensure code quality:
 
 ```bash
-# Run all tests (23 tests across 3 suites)
+# Run all tests (30+ tests across 4 suites)
 ./test/test-runner.sh
 
 # Run specific test suite
 ./test/test-runner.sh core    # Core functions (7 tests)
 ./test/test-runner.sh config  # Configuration (8 tests)
 ./test/test-runner.sh files   # File operations (8 tests)
+./test/test-runner.sh ideas   # Idea management (8+ tests)
 
 # List available tests
 ./test/test-runner.sh --list
@@ -189,6 +237,7 @@ Run the comprehensive test suite to ensure code quality:
 bash test/test-core.sh
 bash test/test-config.sh
 bash test/test-files.sh
+bash test/test-ideas.sh
 
 # Simulate GitHub Actions locally
 ./.github/test-local.sh

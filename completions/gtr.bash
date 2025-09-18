@@ -17,7 +17,7 @@ _gtr_list_worktrees() {
 }
 
 _gtr_subcommands() {
-  echo "create c remove rm cd list ls l claude cursor prune doctor init --help -h"
+  echo "create c remove rm cd list ls l idea i claude cursor prune doctor init --help -h"
 }
 
 _gtr_global_opts() {
@@ -38,6 +38,14 @@ _gtr_doctor_opts() {
 
 _gtr_init_opts() {
   echo "--doctor --fix"
+}
+
+_gtr_idea_subcommands() {
+  echo "create c list l"
+}
+
+_gtr_idea_list_opts() {
+  echo "--mine --todo --status --filter"
 }
 
 _gtr_completion() {
@@ -67,8 +75,24 @@ _gtr_completion() {
       prune)     opts+=" $(_gtr_prune_opts)" ;;
       doctor)    opts+=" $(_gtr_doctor_opts)" ;;
       init)      opts+=" $(_gtr_init_opts)" ;;
+      idea|i)    opts+=" $(_gtr_idea_list_opts)" ;;
     esac
     COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    return 0
+  fi
+
+  # Idea subcommand completion
+  if [[ "$subcmd" == "idea" || "$subcmd" == "i" ]]; then
+    local idea_subcmd="${COMP_WORDS[2]}"
+    if [[ $COMP_CWORD -eq 2 ]]; then
+      COMPREPLY=( $(compgen -W "$(_gtr_idea_subcommands)" -- "$cur") )
+      return 0
+    elif [[ "$idea_subcmd" == "list" || "$idea_subcmd" == "l" ]]; then
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$(_gtr_idea_list_opts)" -- "$cur") )
+        return 0
+      fi
+    fi
     return 0
   fi
 

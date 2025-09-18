@@ -22,6 +22,9 @@ Change directory to a worktree path.
 .B list, ls, l
 List all worktrees.
 .TP
+.B idea, i \fI[summary|list]\fR
+Manage development ideas across worktrees (default: create).
+.TP
 .B claude \fIname\fR
 Run \fBclaude\fR in the specified worktree directory, creating it if prompted.
 .TP
@@ -68,6 +71,9 @@ Include uncommitted changes in worktree (default: \fBtrue\fR).
 .TP
 .B init
 \fB--doctor\fR, \fB--fix\fR
+.TP
+.B idea list
+\fB--mine\fR, \fB--todo\fR, \fB--status=STATUS\fR, \fB--filter=STRING\fR
 .SH CONFIGURATION
 Configuration lives at \fB.gtr/config\fR in INI-like sections.
 .PP
@@ -106,6 +112,12 @@ $ gtr create feature0 --base main --no-install --no-open
 # Navigate and run tools
 $ gtr cd feature0
 $ gtr claude feature0
+
+# Idea management
+$ gtr idea
+$ gtr idea 'Performance optimization'
+$ gtr idea list
+$ gtr idea list --mine --filter=bug
 
 # Cleanup
 $ gtr rm feature0 --dry-run

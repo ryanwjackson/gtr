@@ -412,3 +412,117 @@ gtr_doctor() {
     fi
   fi
 }
+
+# Idea management commands
+
+gtr_idea_create() {
+  local summary=""
+  
+  # Check if summary was provided as argument
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    summary="${_GTR_ARGS[0]}"
+  fi
+  
+  # If no summary provided, prompt for it
+  if [[ -z "$summary" ]]; then
+    summary=$(_gtr_ask_user "Enter idea summary: " "")
+    if [[ -z "$summary" ]]; then
+      echo "❌ No summary provided. Idea creation cancelled."
+      return 1
+    fi
+  fi
+  
+  # Ensure ideas directory exists
+  if ! _gtr_ensure_ideas_dir; then
+    return 1
+  fi
+  
+  # Get repository information
+  local repo_info="$(_gtr_get_repo_info)"
+  IFS='|' read -r repo_name repo_url current_branch latest_commit <<< "$repo_info"
+  
+  # Generate filename and file path
+  local filename="$(_gtr_generate_idea_filename "$summary")"
+  local ideas_dir="$(_gtr_get_ideas_dir)"
+  local file_path="$ideas_dir/$filename"
+  
+  # Create idea file content
+  local content="$(_gtr_create_idea_content "$summary" "$repo_name" "$repo_url" "$current_branch" "$latest_commit")"
+  
+  # Write idea file
+  if echo "$content" > "$file_path"; then
+    echo "✅ Created idea: $filename"
+    echo "📁 Location: $file_path"
+    
+    # Open in editor if configured
+    local editor="${_GTR_EDITOR:-cursor}"
+    if command -v "$editor" >/dev/null 2>&1; then
+      echo "🔧 Opening in $editor..."
+      "$editor" "$file_path"
+    else
+      echo "💡 Open with: $editor \"$file_path\""
+    fi
+  else
+    echo "❌ Failed to create idea file: $file_path"
+    return 1
+  fi
+}
+
+gtr_idea_list() {
+  # Parse arguments for filtering
+  local filter_args=()
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --mine|--todo|--status=*)
+        filter_args+=("$arg")
+        ;;
+    esac
+  done
+  
+  # List ideas with filters
+  _gtr_list_ideas "${filter_args[@]}"
+}
+
+gtr_idea() {
+  local subcmd="${_GTR_ARGS[0]:-}"
+  
+  # Remove the subcommand from args
+  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
+    _GTR_ARGS=("${_GTR_ARGS[@]:1}")
+  fi
+  
+  case "$subcmd" in
+    c|create)
+      gtr_idea_create
+      ;;
+    l|list)
+      gtr_idea_list
+      ;;
+    "")
+      echo "Usage: gtr idea {create|list} [OPTIONS]"
+      echo ""
+      echo "COMMANDS:"
+      echo "  create, c [summary]  Create a new idea file"
+      echo "  list, l             List ideas with optional filters"
+      echo ""
+      echo "OPTIONS for list:"
+      echo "  --mine              Show only your ideas"
+      echo "  --todo              Show only TODO status ideas"
+      echo "  --status=STATUS     Show only ideas with specific status"
+      echo ""
+      echo "EXAMPLES:"
+      echo "  gtr idea create                    # Prompt for summary"
+      echo "  gtr idea create 'New feature'      # Create with summary"
+      echo "  gtr idea list                      # List all ideas"
+      echo "  gtr idea list --mine               # List your ideas"
+      echo "  gtr idea list --todo               # List TODO ideas"
+      echo "  gtr idea list --status=IN_PROGRESS # List in-progress ideas"
+      return 1
+      ;;
+    *)
+      echo "Unknown idea sub-command: $subcmd"
+      echo "Use 'gtr idea' to see available commands"
+      return 1
+      ;;
+  esac
+}
