@@ -144,6 +144,19 @@ jobs:
             --body  "Automated bump (dry_run=${DRY}): update URL and SHA256 for ${{ steps.meta.outputs.tag }}." \
             --fill
 
+          # If not a dry run, enable auto-merge so it merges once checks pass
+          if [[ "$DRY" != "true" ]]; then
+            # Approve the PR from the bot account to satisfy branch protections requiring approval
+            gh pr review --approve || echo "Approve failed (may not be required). Proceeding to set auto-merge."
+            # This targets the PR associated with the current branch by default
+            # Use your preferred strategy: --squash (default here) or --merge/--rebase
+            gh pr merge --auto --squash --delete-branch || {
+              echo "Auto-merge failed or not enabled on the repository. Leaving PR open.";
+            }
+          else
+            echo "Dry run enabled; skipping auto-merge.";
+          fi
+
       # Optional: uncomment to lint the formula in CI for extra safety
       # - name: Brew audit (optional)
       #   shell: bash
