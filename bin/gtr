@@ -41,12 +41,19 @@ _gtr_get_base_dir() {
 _gtr_ask_user() {
   local prompt="$1"
   local default_value="${2:-}"
-  
+
   printf "%s" "$prompt"
-  
-  if [[ -t 0 ]] && read -r reply; then
-    # Terminal input available, use user input
-    echo "$reply"
+
+  if [[ -t 0 ]]; then
+    # Terminal input available, read user input
+    read -r reply
+    if [[ -z "$reply" ]]; then
+      # Empty input, use default
+      echo "$default_value"
+    else
+      # Use user input
+      echo "$reply"
+    fi
   else
     # No interactive input available, return default
     echo "$default_value"
@@ -64,10 +71,20 @@ _gtr_get_worktree_branch_name() {
 
 _gtr_read_config() {
   local main_worktree="$1"
-  local config_file="$main_worktree/.gtr/config"
+  local global_config_file="$HOME/.gtr/config"
+  local local_config_file="$main_worktree/.gtr/config"
+  local config_file=""
   local patterns=()
-  
-  if [[ -f "$config_file" ]]; then
+
+  # Check for global config first, then local config overrides it
+  if [[ -f "$global_config_file" ]]; then
+    config_file="$global_config_file"
+  fi
+  if [[ -f "$local_config_file" ]]; then
+    config_file="$local_config_file"
+  fi
+
+  if [[ -n "$config_file" && -f "$config_file" ]]; then
     local in_files_section=false
     local line_count=0
     local max_lines=1000  # Prevent infinite loops
@@ -125,9 +142,19 @@ _gtr_read_config_setting() {
   local section="$2"
   local key="$3"
   local default="$4"
-  local config_file="$main_worktree/.gtr/config"
-  
-  if [[ ! -f "$config_file" ]]; then
+  local global_config_file="$HOME/.gtr/config"
+  local local_config_file="$main_worktree/.gtr/config"
+  local config_file=""
+
+  # Check for global config first, then local config overrides it
+  if [[ -f "$global_config_file" ]]; then
+    config_file="$global_config_file"
+  fi
+  if [[ -f "$local_config_file" ]]; then
+    config_file="$local_config_file"
+  fi
+
+  if [[ -z "$config_file" || ! -f "$config_file" ]]; then
     echo "$default"
     return
   fi
@@ -568,10 +595,11 @@ _gtr_get_main_worktree() {
 
 _gtr_is_initialized() {
   local main_worktree="$(_gtr_get_main_worktree)"
-  local config_file="$main_worktree/.gtr/config"
-  
-  # Check if the .gtr directory and config file exist
-  if [[ -f "$config_file" ]]; then
+  local global_config_file="$HOME/.gtr/config"
+  local local_config_file="$main_worktree/.gtr/config"
+
+  # Check if either global or local config file exists
+  if [[ -f "$local_config_file" || -f "$global_config_file" ]]; then
     return 0  # Initialized
   else
     return 1  # Not initialized
@@ -975,18 +1003,19 @@ _gtr_prune_worktrees() {
 
 # Public command functions
 gtr_create() {
-  # Check if the repository has been initialized
+  # Check if configuration exists (either global or local)
   if ! _gtr_is_initialized; then
-    echo "❌ Repository has not been initialized with gtr"
-    echo "   Run 'gtr init' first to set up the configuration"
+    echo "❌ No gtr configuration found"
+    echo "   Run 'gtr init' to create a global configuration (~/.gtr/config)"
+    echo "   or create a local configuration in this repository (.gtr/config)"
     return 1
   fi
-  
+
   # Use the global base_branch variable, default to current branch if not set
   if [[ -z "$_GTR_BASE_BRANCH" ]]; then
     _GTR_BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   fi
-  
+
   for name in "${_GTR_ARGS[@]}"; do
     _gtr_create_worktree "$name"
   done
@@ -1112,17 +1141,176 @@ gtr_prune() {
   _gtr_prune_worktrees
 }
 
+_gtr_init_global_config() {
+  local global_config_dir="$1"
+  local global_config_file="$2"
+
+  echo "🔧 Initializing global gtr configuration..."
+
+  # Create ~/.gtr directory
+  if [[ ! -d "$global_config_dir" ]]; then
+    mkdir -p "$global_config_dir"
+    echo "📁 Created ~/.gtr directory"
+  fi
+
+  # Create global config file
+  _gtr_create_default_config "$global_config_file"
+  echo "📝 Created global configuration file at $global_config_file"
+  echo "✅ Global gtr configuration initialized!"
+}
+
+_gtr_init_config_with_options() {
+  local config_dir="$1"
+  local config_file="$2"
+  local config_type="$3"  # "global" or "local"
+
+  echo "🔧 Initializing $config_type gtr configuration..."
+
+  # Create directory if it doesn't exist
+  if [[ ! -d "$config_dir" ]]; then
+    mkdir -p "$config_dir"
+    echo "📁 Created $config_dir directory"
+  fi
+
+  # Handle existing config file
+  if [[ -f "$config_file" ]]; then
+    echo "⚠️  Configuration file already exists: $config_file"
+    echo ""
+    echo "What would you like to do?"
+    echo "  [o]verwrite - Replace with default configuration"
+    echo "  [d]iff      - Show diff between current and default"
+    echo "  [m]erge     - Merge default settings into current config"
+    echo "  [s]kip      - Keep existing configuration"
+    echo ""
+
+    while true; do
+      printf "Choose [overwrite/diff/merge/skip]: "
+      read -r choice
+      if [[ -z "$choice" ]]; then
+        choice="skip"
+      fi
+
+      case "$choice" in
+        [oO]|overwrite)
+          echo "🔄 Overwriting configuration file..."
+          _gtr_create_default_config "$config_file"
+          echo "✅ Configuration file overwritten"
+          break
+          ;;
+        [dD]|diff)
+          _gtr_show_config_diff "$config_file"
+          # Ask again after showing diff
+          ;;
+        [mM]|merge)
+          _gtr_merge_config "$config_file"
+          echo "✅ Configuration file merged"
+          break
+          ;;
+        [sS]|skip)
+          echo "⏭️  Keeping existing configuration"
+          break
+          ;;
+        *)
+          echo "Invalid choice. Please choose overwrite, diff, merge, or skip."
+          ;;
+      esac
+    done
+  else
+    _gtr_create_default_config "$config_file"
+    echo "📝 Created default $config_type configuration file"
+  fi
+
+  echo "✅ $config_type gtr configuration initialized successfully!"
+  echo "   Config file: $config_file"
+  echo "   Edit this file to customize gtr behavior"
+}
+
 gtr_init() {
   local init_doctor="${_GTR_INIT_DOCTOR:-false}"
   local init_fix="${_GTR_INIT_FIX:-false}"
   local main_worktree="$(_gtr_get_main_worktree)"
-  local config_dir="$main_worktree/.gtr"
-  local config_file="$config_dir/config"
+  local global_config_dir="$HOME/.gtr"
+  local global_config_file="$global_config_dir/config"
+  local local_config_dir="$main_worktree/.gtr"
+  local local_config_file="$local_config_dir/config"
 
   if [[ "$init_doctor" == "true" ]]; then
+    # For doctor mode, check the config that would be used
+    local config_file="$local_config_file"
+    if [[ ! -f "$local_config_file" && -f "$global_config_file" ]]; then
+      config_file="$global_config_file"
+    fi
     _gtr_init_doctor "$main_worktree" "$config_file" "$init_fix"
   else
-    _gtr_init_config "$main_worktree" "$config_dir" "$config_file"
+    # Ask about global config first
+    if [[ ! -f "$global_config_file" ]]; then
+      echo "🔧 No global gtr configuration found at ~/.gtr/config"
+      echo ""
+      printf "Create global config? [Y/n] "
+      read -r choice
+      if [[ -z "$choice" ]]; then
+        choice="Y"
+      fi
+      case "$choice" in
+        [nN]|[nN][oO])
+          echo "⏭️  Skipping global configuration"
+          ;;
+        *)
+          _gtr_init_global_config "$global_config_dir" "$global_config_file"
+          ;;
+      esac
+    else
+      echo "📋 Global config already exists: $global_config_file"
+      echo ""
+      echo "What would you like to do with the global config?"
+      echo "  [k]eep    - Keep existing global configuration"
+      echo "  [u]pdate  - Update/recreate global configuration"
+      echo "  [d]iff    - Show diff between current and default"
+      echo ""
+
+      printf "Choose [keep/update/diff]: "
+      read -r choice
+      if [[ -z "$choice" ]]; then
+        choice="keep"
+      fi
+      case "$choice" in
+        [uU]|update)
+          _gtr_init_config_with_options "$global_config_dir" "$global_config_file" "global"
+          ;;
+        [dD]|diff)
+          _gtr_show_config_diff "$global_config_file"
+          ;;
+        *)
+          echo "✅ Keeping existing global configuration"
+          ;;
+      esac
+    fi
+
+    echo ""
+
+    # Ask about local config
+    if [[ ! -f "$local_config_file" ]]; then
+      echo "🤔 Would you like to create a local .gtr/config for this repository?"
+      echo "   This will override the global config (~/.gtr/config) for this repo only."
+      echo ""
+
+      printf "Create local config? [y/N] "
+      read -r choice
+      if [[ -z "$choice" ]]; then
+        choice="N"
+      fi
+      case "$choice" in
+        [yY]|[yY][eE][sS])
+          _gtr_init_config "$main_worktree" "$local_config_dir" "$local_config_file"
+          ;;
+        *)
+          echo "✅ Using global configuration at $global_config_file"
+          ;;
+      esac
+    else
+      echo "📋 Local config already exists: $local_config_file"
+      _gtr_init_config "$main_worktree" "$local_config_dir" "$local_config_file"
+    fi
   fi
 }
 
@@ -1151,13 +1339,12 @@ _gtr_init_config() {
     echo ""
     
     while true; do
-      local choice
-      choice=$(_gtr_ask_user "Choose [overwrite/diff/merge/skip]: " "skip")
+      printf "Choose [overwrite/diff/merge/skip]: "
+      read -r choice
       if [[ -z "$choice" ]]; then
-        echo "No input available, skipping configuration update"
-        break
+        choice="skip"
       fi
-      
+
       case "$choice" in
         [oO]|overwrite)
           echo "🔄 Overwriting configuration file..."
