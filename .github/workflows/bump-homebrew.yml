@@ -60,130 +60,41 @@ jobs:
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256"   >> "$GITHUB_OUTPUT"
 
-      - name: Clone tap and bump formula (auto-bootstrap if empty)
+      - name: Clone tap and bump formula
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-
-          # Clone the tap and ensure pushes authenticate with GH_TOKEN
           gh repo clone "$TAP_OWNER/$TAP_REPO" tap
           cd tap
-          git remote set-url origin "https://${GH_TOKEN}@github.com/${TAP_OWNER}/${TAP_REPO}.git"
 
-          # Detect empty repo (no commits yet)
-          if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
-            echo "::notice:: Tap is empty. Bootstrapping main with initial formula…"
-
-            # Create formula skeleton
-            mkdir -p "$(dirname "$FORMULA_PATH")"
-            cat > "$FORMULA_PATH" <<'RUBY'
-class Gtr < Formula
-  desc "Git worktree helper"
-  homepage "https://github.com/ryanwjackson/gtr"
-  url "TBD_URL"
-  sha256 "TBD_SHA"
-  license "MIT"
-  head "https://github.com/ryanwjackson/gtr.git", branch: "main"
-
-  def install
-    bin.install "bin/gtr"
-    # Optional docs/completions (install only if present in the tarball)
-    man1.install "man/man1/gtr.1" if File.exist?("man/man1/gtr.1")
-    zsh_completion.install "completions/_gtr" if File.exist?("completions/_gtr")
-    bash_completion.install "completions/gtr.bash" if File.exist?("completions/gtr.bash")
-    fish_completion.install "completions/gtr.fish" if File.exist?("completions/gtr.fish")
-  end
-
-  test do
-    assert_match "gtr", shell_output("#{bin}/gtr --help")
-  end
-end
-RUBY
-
-            # Bump to the current tag values
-            perl -0777 -pe 's|^  url ".*"|  url "'${{ steps.meta.outputs.tarball }}'"|m; s|^  sha256 ".*"|  sha256 "'${{ steps.meta.outputs.sha256 }}'"|m' -i "$FORMULA_PATH"
-
-            # Create initial commit on main and push (no PR possible without a base branch)
-            git checkout -b main
-            git config user.name  "${{ vars.GIT_USER_NAME  || 'github-actions[bot]' }}"
-            git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
-            git add "$FORMULA_PATH"
-            git commit -m "Bootstrap tap with gtr formula at ${{ steps.meta.outputs.tag }}"
-            git push -u origin main
-
-            echo "::notice:: Bootstrap complete. Future runs will open PRs."
-            exit 0
-          fi
-
-          # Non-empty tap: proceed with normal branch + PR flow
+          # Determine dry-run suffix and branch name
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
           SUFFIX=""
           if [[ "$DRY" == "true" ]]; then SUFFIX="-dryrun"; fi
           BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}$SUFFIX"
+          git checkout -b "$BRANCH"
 
-          # Get default branch name to target PR base
-          DEFAULT_BRANCH="$(gh repo view "${TAP_OWNER}/${TAP_REPO}" --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)"
-          echo "Tap default branch: $DEFAULT_BRANCH"
-
-          git fetch origin "$DEFAULT_BRANCH" || true
-          git checkout -b "$BRANCH" "origin/$DEFAULT_BRANCH" || git checkout -b "$BRANCH"
-
+          # Configure git identity (can also set via repo variables)
           git config user.name  "${{ vars.GIT_USER_NAME  || 'github-actions[bot]' }}"
           git config user.email "${{ vars.GIT_USER_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}"
 
-          # If the formula doesn't exist yet (first-time add on non-empty tap), create it
-          if [[ ! -f "$FORMULA_PATH" ]]; then
-            echo "::notice:: Formula not found at $FORMULA_PATH. Creating new formula file…"
-            mkdir -p "$(dirname "$FORMULA_PATH")"
-            cat > "$FORMULA_PATH" <<'RUBY'
-class Gtr < Formula
-  desc "Git worktree helper"
-  homepage "https://github.com/ryanwjackson/gtr"
-  url "TBD_URL"
-  sha256 "TBD_SHA"
-  license "MIT"
-  head "https://github.com/ryanwjackson/gtr.git", branch: "main"
-
-  def install
-    bin.install "bin/gtr"
-    man1.install "man/man1/gtr.1" if File.exist?("man/man1/gtr.1")
-    zsh_completion.install "completions/_gtr" if File.exist?("completions/_gtr")
-    bash_completion.install "completions/gtr.bash" if File.exist?("completions/gtr.bash")
-    fish_completion.install "completions/gtr.fish" if File.exist?("completions/gtr.fish")
-  end
-
-  test do
-    assert_match "gtr", shell_output("#{bin}/gtr --help")
-  end
-end
-RUBY
-          fi
-
-          # Update url & sha256 in-place to current tag
+          # In-place edit with Perl (portable across BSD/GNU)
           perl -0777 -pe 's|^  url ".*"|  url "'${{ steps.meta.outputs.tarball }}'"|m; s|^  sha256 ".*"|  sha256 "'${{ steps.meta.outputs.sha256 }}'"|m' -i "$FORMULA_PATH"
 
           echo "Diff:"
           git --no-pager diff -- "$FORMULA_PATH" || true
 
           git add "$FORMULA_PATH"
-          git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}$SUFFIX" || echo "No changes to commit."
+          git commit -m "gtr: bump to ${{ steps.meta.outputs.tag }}$SUFFIX"
+          git push -u origin "$BRANCH"
 
-          # If there were no changes (same tag already), exit gracefully
-          if ! git diff --cached --quiet; then
-            git push -u origin "$BRANCH"
-
-            # Open a PR targeting the tap's default branch
-            gh pr create \
-              --title "Bump gtr to ${{ steps.meta.outputs.tag }}$SUFFIX" \
-              --body  "Automated bump (dry_run=${DRY}): update URL and SHA256 for ${{ steps.meta.outputs.tag }}." \
-              --base "$DEFAULT_BRANCH" \
-              --head "$BRANCH" \
-              --fill
-          else
-            echo "::notice:: No changes to push; formula already at ${{ steps.meta.outputs.tag }}."
-          fi
+          # Open a PR targeting the tap's default branch
+          gh pr create \
+            --title "Bump gtr to ${{ steps.meta.outputs.tag }}$SUFFIX" \
+            --body  "Automated bump (dry_run=${DRY}): update URL and SHA256 for ${{ steps.meta.outputs.tag }}." \
+            --fill
 
       # Optional: uncomment to lint the formula in CI for extra safety
       # - name: Brew audit (optional)
@@ -191,4 +102,4 @@ RUBY
       #   run: |
       #     set -euo pipefail
       #     brew update
-      #     brew audit --strict --new-formula "$FORMULA_PATH"
+      #     brew audit --strict --new-formula "tap/$FORMULA_PATH"
