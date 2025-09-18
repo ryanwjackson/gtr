@@ -12,6 +12,7 @@ Arguments:
 
 Options:
   -m, --message <msg>  Release notes/title message. Defaults to the normalized version string.
+  -f, --force          Allow using an existing tag (locally or on remote).
   -h, --help           Show this help.
 
 Environment:
@@ -21,6 +22,7 @@ Behavior:
   - Normalizes the tag to start with 'v' (e.g., 1.2.3 -> v1.2.3).
   - Creates an annotated git tag locally if missing, pushes it to the remote.
   - Creates a GitHub Release for the tag if it does not already exist.
+  - Fails if the tag already exists locally or remotely unless --force is provided.
 
 Examples:
   # Simple release with default notes (the tag itself)
@@ -36,6 +38,7 @@ USAGE
 
 message=""
 version=""
+force=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,6 +50,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       usage; exit 0
+      ;;
+    -f|--force)
+      force=true
+      shift
       ;;
     --)
       shift; break
@@ -123,19 +130,34 @@ if ! git remote get-url "$remote" >/dev/null 2>&1; then
   fi
 fi
 
-# Create annotated tag if it does not exist
+## Tag existence checks
+local_exists=false
+remote_exists=false
 if git rev-parse "$tag" >/dev/null 2>&1; then
-  echo "Tag $tag already exists"
-else
-  echo "Creating annotated tag $tag"
-  git tag -a "$tag" -m "$notes"
-  echo "Pushing tag $tag to $remote"
-  git push "$remote" "$tag"
+  local_exists=true
+fi
+if git ls-remote --tags "$remote" "$tag" | grep -q "$tag"; then
+  remote_exists=true
 fi
 
-# If tag exists locally but may not be pushed, attempt push (no-op if already present)
-if ! git ls-remote --tags "$remote" "$tag" | grep -q "$tag"; then
-  echo "Tag $tag not found on remote $remote; pushing"
+if [[ "$local_exists" == true || "$remote_exists" == true ]]; then
+  if [[ "$force" != true ]]; then
+    echo "Error: tag $tag already exists (local: $local_exists, remote: $remote_exists). Use --force to proceed." >&2
+    exit 1
+  else
+    echo "Warning: proceeding with existing tag $tag due to --force (local: $local_exists, remote: $remote_exists)."
+  fi
+fi
+
+# Create annotated tag if it does not exist yet
+if [[ "$local_exists" != true ]]; then
+  echo "Creating annotated tag $tag"
+  git tag -a "$tag" -m "$notes"
+fi
+
+# Ensure tag is pushed
+if [[ "$remote_exists" != true ]]; then
+  echo "Pushing tag $tag to $remote"
   git push "$remote" "$tag"
 fi
 
