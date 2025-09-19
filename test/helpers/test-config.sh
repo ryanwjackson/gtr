@@ -4,12 +4,12 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-utils.sh"
+source "$SCRIPT_DIR/mock-git.sh"
 
 # Source required modules
-source "$SCRIPT_DIR/../lib/gtr-ui.sh"
-source "$SCRIPT_DIR/../lib/gtr-config.sh"
+source "$SCRIPT_DIR/../../lib/gtr-ui.sh"
+source "$SCRIPT_DIR/../../lib/gtr-config.sh"
 
 # Test reading configuration
 test_gtr_read_config() {
@@ -123,8 +123,12 @@ EOF
 
 # Test global vs local config precedence
 test_config_precedence() {
-  # Create global config
-  local global_config_dir="$HOME/.gtr"
+  # Temporarily override HOME to point to our test directory
+  local original_home="$HOME"
+  export HOME="$GTR_TEST_TEMP_DIR"
+
+  # Create global config in test directory
+  local global_config_dir="$GTR_TEST_TEMP_DIR/.gtr"
   mkdir -p "$global_config_dir"
   cat > "$global_config_dir/config" << 'EOF'
 [settings]
@@ -148,8 +152,10 @@ EOF
   local run_pnpm=$(_gtr_read_config_setting "$TEST_TEMP_DIR" "settings" "run_pnpm" "default")
   assert_equals "false" "$run_pnpm" "Should fall back to global config"
 
-  # Cleanup
-  rm -rf "$global_config_dir"
+  # Restore original HOME
+  export HOME="$original_home"
+
+  # Cleanup handled by test environment teardown
 }
 
 # Run all tests

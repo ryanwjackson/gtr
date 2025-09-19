@@ -303,7 +303,7 @@ USAGE:
     gtr <COMMAND> [OPTIONS] [ARGS...]
 
 COMMANDS:
-    create, c <name>...           Create new worktrees
+    create, c <name>...           Create new worktrees (with --dry-run)
     remove, rm [name]...          Remove worktrees (with --force, --dry-run)
                                   If no name provided, removes current worktree
     cd <name>                     Change directory to worktree
@@ -334,6 +334,7 @@ EXAMPLES:
     gtr create feature0 --no-open          # Don't open editor
     gtr create feature0 --untracked false  # Don't include untracked changes
     gtr create feature0 --base main --untracked false  # Create from main without untracked
+    gtr create feature0 --dry-run                   # Show what would be created
 
     # Manage worktrees
     gtr list                               # List all worktrees

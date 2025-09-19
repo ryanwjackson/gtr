@@ -79,27 +79,6 @@ run_test_with_output() {
   fi
 }
 
-# Register and run a test with debug output
-register_test_with_debug() {
-  local test_name="$1"
-  local test_function="$2"
-
-  CURRENT_TEST="$test_name"
-  ((TEST_COUNT++))
-
-  echo -n "  $test_name ... "
-
-  # Run test in subshell but allow debug output to stderr
-  if (set -e; $test_function) 2>&1; then
-    echo -e "${GREEN}PASS${NC}"
-    ((PASSED_COUNT++))
-    return 0
-  else
-    echo -e "${RED}FAIL${NC}"
-    ((FAILED_COUNT++))
-    return 1
-  fi
-}
 
 # Assertion functions
 assert_equals() {
@@ -458,14 +437,14 @@ setup_gtr_test_env() {
   export GTR_TEST_TEMP_DIR=$(mktemp -d -t gtr-test-XXXXXX)
   export GTR_TEST_ORIGINAL_DIR=$(pwd)
 
-  # Get absolute path to gtr binary
+  # Get absolute path to gtr binary - use the modular version for testing
   if [[ -f "$GTR_TEST_ORIGINAL_DIR/bin/gtr" ]]; then
     export GTR_TEST_GTR_PATH="$GTR_TEST_ORIGINAL_DIR/bin/gtr"
   elif [[ -f "$PWD/bin/gtr" ]]; then
     export GTR_TEST_GTR_PATH="$PWD/bin/gtr"
   else
-    # Find gtr in the path or use a fallback
-    local gtr_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # Find gtr in the path or use a fallback (go up two dirs from test/helpers)
+    local gtr_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     export GTR_TEST_GTR_PATH="$gtr_script_dir/bin/gtr"
   fi
 

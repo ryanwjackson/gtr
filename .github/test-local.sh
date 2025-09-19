@@ -15,9 +15,9 @@ echo "✅ Git configured"
 
 echo ""
 echo "Step 2: Setup Scripts"
-chmod +x bin/gtr bin/gtr-new test/test-runner.sh test/*.sh
+chmod +x bin/gtr test/test-runner.sh test/*.sh
 echo "Verifying script permissions..."
-ls -la bin/gtr bin/gtr-new test/test-runner.sh
+ls -la bin/gtr test/test-runner.sh
 echo "✅ Script permissions set"
 
 echo ""
@@ -26,18 +26,16 @@ echo "Step 3: Run Tests"
 echo "✅ Tests completed"
 
 echo ""
-echo "Step 4: Verify Both Scripts Work"
-echo "Testing original script..."
-./bin/gtr --version
+echo "Step 4: Verify Script Works"
 echo "Testing modular script..."
-./bin/gtr-new --version
-echo "✅ Both scripts functional"
+./bin/gtr --version
+echo "✅ Script functional"
 
 echo ""
 echo "Step 5: Shell Linting (if shellcheck available)"
 if command -v shellcheck >/dev/null 2>&1; then
     echo "Running shellcheck..."
-    shellcheck bin/gtr bin/gtr-new || echo "Some warnings expected"
+    shellcheck bin/gtr || echo "Some warnings expected"
     shellcheck lib/*.sh || echo "Some warnings expected"
     shellcheck test/*.sh test-helpers/*.sh || echo "Some warnings expected"
     echo "✅ Linting completed"
@@ -58,7 +56,7 @@ else
 fi
 
 echo "Checking executable permissions..."
-if [[ -x "bin/gtr" && -x "bin/gtr-new" && -x "test/test-runner.sh" ]]; then
+if [[ -x "bin/gtr" && -x "test/test-runner.sh" ]]; then
     echo "✅ Executable permissions correct"
 else
     echo "❌ Missing executable permissions"

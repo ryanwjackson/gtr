@@ -4,13 +4,13 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-utils.sh"
+source "$SCRIPT_DIR/mock-git.sh"
 
 # Source required modules
-source "$SCRIPT_DIR/../lib/gtr-ui.sh"
-source "$SCRIPT_DIR/../lib/gtr-config.sh"
-source "$SCRIPT_DIR/../lib/gtr-files.sh"
+source "$SCRIPT_DIR/../../lib/gtr-ui.sh"
+source "$SCRIPT_DIR/../../lib/gtr-config.sh"
+source "$SCRIPT_DIR/../../lib/gtr-files.sh"
 
 # Test file difference detection
 test_gtr_files_different() {

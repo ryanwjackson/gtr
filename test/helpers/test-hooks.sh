@@ -4,12 +4,12 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-utils.sh"
+source "$SCRIPT_DIR/mock-git.sh"
 
 # Source required modules
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
-source "$SCRIPT_DIR/../lib/gtr-hooks.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-hooks.sh"
 
 # Test hook execution with successful hook
 test_gtr_execute_hook_success() {
@@ -89,7 +89,7 @@ EOF
 # Test finding hooks directory with local hooks
 test_gtr_find_hooks_dir_local() {
   local main_worktree="$TEST_TEMP_DIR"
-  local global_hooks_dir="$HOME/.gtr/hooks"
+  local global_hooks_dir="$GTR_TEST_TEMP_DIR/.gtr/hooks"
   local local_hooks_dir="$main_worktree/.gtr/hooks"
   
   # Create local hooks directory
@@ -107,17 +107,18 @@ test_gtr_find_hooks_dir_local() {
 # Test finding hooks directory with global hooks only
 test_gtr_find_hooks_dir_global() {
   local main_worktree="$TEST_TEMP_DIR"
-  local global_hooks_dir="$HOME/.gtr/hooks"
-  
+  local fake_home="$GTR_TEST_TEMP_DIR/fake-home"
+  local global_hooks_dir="$fake_home/.gtr/hooks"
+
   # Ensure no local hooks directory exists
   rm -rf "$main_worktree/.gtr/hooks"
-  
-  # Create only global hooks directory
+
+  # Create only global hooks directory in fake home
   mkdir -p "$global_hooks_dir"
-  
+
   local result
-  result=$(_gtr_find_hooks_dir "$main_worktree")
-  
+  result=$(HOME="$fake_home" _gtr_find_hooks_dir "$main_worktree")
+
   assert_equals "$global_hooks_dir" "$result" "Should find global hooks directory"
   
   # Cleanup
@@ -127,12 +128,16 @@ test_gtr_find_hooks_dir_global() {
 # Test finding hooks directory with no hooks
 test_gtr_find_hooks_dir_none() {
   local main_worktree="$TEST_TEMP_DIR"
-  
+
+  # Ensure no local hooks directory exists
+  rm -rf "$main_worktree/.gtr/hooks"
+
   local result
   local exit_code
-  result=$(_gtr_find_hooks_dir "$main_worktree" 2>/dev/null)
+  # Run in a subshell with overridden HOME to avoid finding global hooks
+  result=$(HOME="$GTR_TEST_TEMP_DIR/fake-home" _gtr_find_hooks_dir "$main_worktree" 2>/dev/null)
   exit_code=$?
-  
+
   assert_equals "1" "$exit_code" "Should return error code 1 when no hooks found"
 }
 

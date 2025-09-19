@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: bin/pr [options] [title] [body]
+
+Create or update a GitHub Pull Request for the current branch.
+
+Arguments:
+  title                PR title (optional, defaults to branch-based title)
+  body                 PR body (optional, defaults to simple description)
+
+Options:
+  --auto-merge         Enable auto-merge with squash strategy (default: enabled)
+  --no-auto-merge      Disable auto-merge
+  --base <branch>      Base branch for the PR (defaults to main/master)
+  --head <branch>      Head branch for the PR (defaults to current branch)
+  -h, --help           Show this help
+
+Environment:
+  Requires GitHub CLI (gh) authenticated to your repo (gh auth status).
+
+Behavior:
+  - Pushes current branch to remote if not already pushed
+  - Creates new PR if none exists for the branch
+  - Updates existing PR if one exists for the branch
+  - Optionally enables auto-merge with squash strategy
+
+Examples:
+  # Simple PR creation/update with default title and body (auto-merge enabled)
+  bin/pr
+
+  # PR with custom title (auto-merge enabled by default)
+  bin/pr "Fix user authentication bug"
+
+  # PR without auto-merge
+  bin/pr --no-auto-merge "Draft feature implementation"
+
+  # PR with custom title and body
+  bin/pr "Feature: Add dark mode" "Implements dark mode toggle in settings"
+
+  # PR targeting specific base branch
+  bin/pr --base develop "Hotfix for production issue"
+USAGE
+}
+
+auto_merge=true
+base_branch=""
+head_branch=""
+title=""
+body=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --auto-merge)
+      auto_merge=true
+      shift
+      ;;
+    --no-auto-merge)
+      auto_merge=false
+      shift
+      ;;
+    --base)
+      shift
+      [[ $# -gt 0 ]] || { echo "Error: --base requires an argument" >&2; exit 1; }
+      base_branch="$1"
+      shift
+      ;;
+    --head)
+      shift
+      [[ $# -gt 0 ]] || { echo "Error: --head requires an argument" >&2; exit 1; }
+      head_branch="$1"
+      shift
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    --)
+      shift; break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage; exit 1
+      ;;
+    *)
+      if [[ -z "$title" ]]; then
+        title="$1"
+        shift
+      elif [[ -z "$body" ]]; then
+        body="$1"
+        shift
+      else
+        echo "Unexpected extra argument: $1" >&2
+        usage; exit 1
+      fi
+      ;;
+  esac
+done
+
+# Ensure gh is available and authenticated
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: GitHub CLI 'gh' not found. Install from https://cli.github.com/" >&2
+  exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+  echo "Error: gh is not authenticated. Run 'gh auth login' or set GH_TOKEN." >&2
+  exit 1
+fi
+
+# Ensure git is available
+if ! command -v git >/dev/null 2>&1; then
+  echo "Error: git not found" >&2
+  exit 1
+fi
+
+# Determine default remote
+remote="origin"
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+  # Fallback to first remote, if any
+  if first_remote=$(git remote | head -n1); then
+    remote="$first_remote"
+  else
+    echo "Error: no git remote configured" >&2
+    exit 1
+  fi
+fi
+
+# Get current branch if head_branch not specified
+if [[ -z "$head_branch" ]]; then
+  head_branch="$(git rev-parse --abbrev-ref HEAD)"
+  if [[ "$head_branch" == "HEAD" ]]; then
+    echo "Error: Cannot create PR from detached HEAD state" >&2
+    exit 1
+  fi
+fi
+
+# Determine base branch if not specified
+if [[ -z "$base_branch" ]]; then
+  if git show-ref --verify --quiet "refs/heads/main"; then
+    base_branch="main"
+  elif git show-ref --verify --quiet "refs/heads/master"; then
+    base_branch="master"
+  else
+    # Try to get default branch from remote
+    if command -v git >/dev/null 2>&1; then
+      local default_branch
+      default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+      if [[ -n "$default_branch" ]]; then
+        base_branch="$default_branch"
+      else
+        base_branch="main"  # fallback
+      fi
+    fi
+  fi
+fi
+
+# Don't create PR if we're already on the base branch
+if [[ "$head_branch" == "$base_branch" ]]; then
+  echo "Error: Cannot create PR from $base_branch to itself" >&2
+  exit 1
+fi
+
+# Ensure the current branch is pushed before creating the PR
+echo "Pushing local commits on branch $head_branch to $remote"
+
+# Check if remote branch exists
+if git ls-remote --heads "$remote" "$head_branch" | grep -q "$head_branch"; then
+  echo "Remote branch $head_branch already exists, pushing updates"
+  if git rev-parse --verify "@{u}" >/dev/null 2>&1; then
+    git push "$remote" "$head_branch"
+  else
+    echo "Setting upstream to $remote/$head_branch"
+    git push -u "$remote" "$head_branch"
+  fi
+else
+  echo "Creating new remote branch $head_branch"
+  if git rev-parse --verify "@{u}" >/dev/null 2>&1; then
+    git push "$remote" "$head_branch"
+  else
+    echo "Setting upstream to $remote/$head_branch"
+    git push -u "$remote" "$head_branch"
+  fi
+fi
+
+# Generate default title and body if not provided
+if [[ -z "$title" ]]; then
+  # Convert branch name to readable title
+  title=$(echo "$head_branch" | sed 's/worktrees\///g' | sed 's/[_-]/ /g' | sed 's/\b\w/\u&/g')
+  title="$title"
+fi
+
+if [[ -z "$body" ]]; then
+  body="This PR merges changes from branch \`$head_branch\` into \`$base_branch\`."
+fi
+
+# Check if a PR already exists for this branch
+existing_pr=$(gh pr list --head "$head_branch" --base "$base_branch" --json number,state --jq '.[0]' 2>/dev/null)
+
+if [[ -n "$existing_pr" && "$existing_pr" != "null" ]]; then
+  pr_number=$(echo "$existing_pr" | jq -r '.number')
+  pr_state=$(echo "$existing_pr" | jq -r '.state')
+
+  if [[ "$pr_state" == "OPEN" ]]; then
+    echo "📋 PR #$pr_number already exists for this branch (state: $pr_state)"
+    echo "🔗 View existing PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+
+    # Push any committed changes to update the existing PR
+    echo "🔄 Pushing any committed changes to update existing PR #$pr_number"
+    if git push "$remote" "$head_branch" 2>/dev/null; then
+      echo "✅ Successfully pushed changes to PR #$pr_number"
+    else
+      echo "⚠️  No new changes to push or push failed for PR #$pr_number"
+    fi
+
+    # Handle auto-merge if requested
+    if [[ "$auto_merge" == "true" ]]; then
+      # Check if auto-merge is already enabled
+      auto_merge_status=$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest.enabledAt' 2>/dev/null)
+      if [[ "$auto_merge_status" == "null" || -z "$auto_merge_status" ]]; then
+        echo "🔄 Enabling auto-merge on existing PR #$pr_number"
+        if gh pr merge "$pr_number" --auto --squash 2>/dev/null; then
+          echo "✅ Auto-merge enabled for existing PR #$pr_number"
+        else
+          echo "⚠️  Could not enable auto-merge on existing PR #$pr_number"
+        fi
+      else
+        echo "✅ Auto-merge already enabled on PR #$pr_number"
+      fi
+    fi
+  else
+    echo "📋 PR #$pr_number exists but is $pr_state (not open)"
+    echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+  fi
+else
+  echo "Creating new PR to merge $head_branch into $base_branch"
+
+  # Create the PR
+  if gh pr create --title "$title" --body "$body" --base "$base_branch" --head "$head_branch" 2>/dev/null; then
+    echo "✅ PR created successfully"
+
+    # Handle auto-merge if requested
+    if [[ "$auto_merge" == "true" ]]; then
+      # Get the PR number
+      pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
+      if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+        if gh pr merge "$pr_number" --auto --squash 2>/dev/null; then
+          echo "✅ Auto-merge enabled for PR #$pr_number"
+          echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+        else
+          echo "⚠️  PR created but auto-merge could not be enabled. You may need to enable it manually."
+          echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+        fi
+      else
+        echo "⚠️  PR created but could not retrieve PR number for auto-merge setup"
+      fi
+    else
+      # Just show the PR URL
+      pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
+      if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+        echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+      fi
+    fi
+  else
+    echo "❌ Failed to create PR. You may need to create it manually."
+    echo "💡 Suggested command:"
+    echo "   gh pr create --title \"$title\" --body \"$body\" --base \"$base_branch\" --head \"$head_branch\""
+    exit 1
+  fi
+fi
+
+echo "Done."

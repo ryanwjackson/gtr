@@ -25,14 +25,13 @@ jobs:
     - name: Make scripts executable
       run: |
         chmod +x bin/gtr
-        chmod +x bin/gtr-new
         chmod +x test/test-runner.sh
         chmod +x test/*.sh
 
     - name: Test module loading
       run: |
         echo "=== Testing module loading ==="
-        ./bin/gtr-new --version
+        ./bin/gtr --version
         echo "Version check: PASSED"
 
     - name: Run comprehensive test suite
@@ -44,30 +43,26 @@ jobs:
       run: |
         echo "=== Testing individual modules ==="
         echo "Testing core module..."
-        bash test/test-core.sh
+        bash test/helpers/test-core.sh
         echo ""
         echo "Testing config module..."
-        bash test/test-config.sh
+        bash test/helpers/test-config.sh
         echo ""
         echo "Testing files module..."
-        bash test/test-files.sh
+        bash test/helpers/test-files.sh
 
     - name: Validate functionality preservation
       run: |
         echo "=== Validating functionality preservation ==="
-        echo "Testing original script..."
+        echo "Testing modular script..."
         ./bin/gtr --version
         echo ""
-        echo "Testing modular script..."
-        ./bin/gtr-new --version
-        echo ""
-        echo "Comparing help outputs..."
-        ./bin/gtr --help > /tmp/original_help.txt 2>&1
-        ./bin/gtr-new --help > /tmp/modular_help.txt 2>&1
-        if diff /tmp/original_help.txt /tmp/modular_help.txt; then
-          echo "Help outputs match: PASSED"
+        echo "Testing help output..."
+        ./bin/gtr --help > /tmp/help_output.txt 2>&1
+        if [[ -s /tmp/help_output.txt ]]; then
+          echo "Help output generated: PASSED"
         else
-          echo "Help outputs differ: FAILED"
+          echo "Help output empty: FAILED"
           exit 1
         fi
 
@@ -75,7 +70,7 @@ jobs:
       run: |
         echo "=== Testing error handling ==="
         # Test invalid command
-        if ./bin/gtr-new invalid-command 2>/dev/null; then
+        if ./bin/gtr invalid-command 2>/dev/null; then
           echo "Invalid command should fail: FAILED"
           exit 1
         else
@@ -94,16 +89,13 @@ jobs:
         bash -c "source lib/gtr-ui.sh; echo 'UI module loaded'"
         echo "UI module: PASSED"
 
-    - name: Performance comparison
+    - name: Performance test
       run: |
-        echo "=== Performance comparison ==="
-        echo "Timing original script..."
+        echo "=== Performance test ==="
+        echo "Timing modular script..."
         time ./bin/gtr --version >/dev/null
         echo ""
-        echo "Timing modular script..."
-        time ./bin/gtr-new --version >/dev/null
-        echo ""
-        echo "Both should complete quickly"
+        echo "Script should complete quickly"
 
     - name: Generate test report
       if: always()
@@ -142,9 +134,9 @@ jobs:
     - name: Test with bash version
       run: |
         echo "Testing with bash $(bash --version | head -1)"
-        chmod +x bin/gtr-new test/test-runner.sh test/*.sh
-        ./bin/gtr-new --version
-        bash test/test-core.sh
+        chmod +x bin/gtr test/test-runner.sh test/*.sh
+        ./bin/gtr --version
+        bash test/helpers/test-core.sh
 
   security:
     name: Security Checks
@@ -190,7 +182,7 @@ jobs:
 
         # Ensure executable files are properly set
         echo "Checking executable permissions..."
-        if [[ -x "bin/gtr" && -x "bin/gtr-new" && -x "test/test-runner.sh" ]]; then
+        if [[ -x "bin/gtr" && -x "test/test-runner.sh" ]]; then
           echo "Executable permissions correct: PASSED"
         else
           echo "Missing executable permissions: FAILED"

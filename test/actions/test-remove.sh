@@ -4,14 +4,14 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/../helpers/test-utils.sh"
+source "$SCRIPT_DIR/../helpers/mock-git.sh"
 
 # Source the module under test
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
-source "$SCRIPT_DIR/../lib/gtr-hooks.sh"
-source "$SCRIPT_DIR/../lib/gtr-git.sh"
-source "$SCRIPT_DIR/../lib/gtr-commands.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-hooks.sh"
+source "$SCRIPT_DIR/../../lib/gtr-git.sh"
+source "$SCRIPT_DIR/../../lib/gtr-commands.sh"
 
 setup_remove_test_env() {
   # Create a temporary test directory

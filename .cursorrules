@@ -1,0 +1,94 @@
+# GTR Project Development Rules
+
+## General Guidelines
+- Always use `./bin/gtr-new` for testing during development (NOT the installed `gtr` command)
+- Maintain compatibility between `./bin/gtr-new` and `./bin/gtr`
+- Follow existing code style and naming conventions
+- Never commit hardcoded paths or user-specific configurations
+
+## Testing Requirements
+
+### Always Run Tests
+- Run `./test/test-runner.sh` before and after any changes
+- Use `./bin/test` as a convenience script
+- Ensure all tests pass before committing
+
+### Test Structure
+- **Action tests** (`test/actions/`): Test user-facing commands (create, remove, prune, init, stash, ideas)
+- **Helper tests** (`test/helpers/`): Test shared functionality (core, config, files, hooks)
+- Use `./test/test-runner.sh helpers` or `./test/test-runner.sh actions` for category testing
+- Run specific tests with `./test/test-runner.sh <test-name>`
+
+### Test Writing
+- All tests must be cross-platform compatible
+- Use relative paths and portable shell constructs
+- Avoid hardcoded paths like `/Users/username/` or `/tmp`
+- Use `mktemp -d` for temporary directories
+- Use `$GTR_TEST_TEMP_DIR` for test isolation
+- When testing create commands, always use `--no-open` to prevent IDE launching
+
+### Path Conventions
+- Test files in `test/actions/` source helpers with `../helpers/`
+- Test files in `test/helpers/` source helpers with `./`
+- All tests source lib modules with `../../lib/`
+- Use `$SCRIPT_DIR` for relative path resolution
+
+### Dry-Run Testing
+- Test all destructive actions with `--dry-run` option
+- Verify dry-run shows correct output without executing changes
+- Ensure dry-run and normal execution share identical code paths
+
+## Module Development
+
+### Module Structure
+- Modules in `lib/` must maintain dependency order
+- Never introduce circular dependencies
+- Use consistent function naming: `_gtr_*` for private, `gtr_*` for public commands
+
+### Testing Integration
+- Add functionality to appropriate modules first
+- Write tests before implementing features
+- Test both individual functions and end-to-end command behavior
+
+## Platform Compatibility
+
+### Cross-Platform Requirements
+- Tests must run identically on macOS, Linux, and Windows (WSL)
+- Tests must work in both local development and GitHub Actions CI
+- No assumptions about user directories or system paths
+- Use portable shell constructs and avoid platform-specific commands
+
+### Environment Variables
+- Use `$HOME` cautiously - override in tests when needed
+- Use `$GTR_TEST_TEMP_DIR` for test isolation
+- Clean up temporary resources in test teardown
+
+## Documentation
+- Update CLAUDE.md when changing test structure or commands
+- Include examples of new functionality in help text
+- Document any new environment variables or configuration options
+
+## Git Workflow
+- Never commit without running full test suite
+- Use descriptive commit messages following project conventions
+- Include test coverage for all new features
+- Maintain backward compatibility unless explicitly breaking
+
+## Commands to Remember
+```bash
+# Testing
+./test/test-runner.sh           # Run all tests
+./bin/test                      # Convenience script
+./test/test-runner.sh helpers   # Helper tests only
+./test/test-runner.sh actions   # Action tests only
+./test/test-runner.sh create    # Specific command tests
+
+# Development
+./bin/gtr-new --help           # Test development version
+./bin/gtr-new create test --no-open --dry-run  # Safe testing
+
+# Dry-run testing
+./bin/gtr-new create test --dry-run
+./bin/gtr-new remove test --dry-run
+./bin/gtr-new prune --dry-run
+```

@@ -4,11 +4,11 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-utils.sh"
+source "$SCRIPT_DIR/mock-git.sh"
 
 # Source the module under test
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
 
 # Test version function
 test_gtr_print_version() {
@@ -22,7 +22,8 @@ test_gtr_get_base_dir() {
   # Test with default
   unset GTR_BASE_DIR
   local result=$(_gtr_get_base_dir)
-  assert_equals "$HOME/Documents/dev/worktrees" "$result" "Should return default base directory"
+  local expected_default="$HOME/Documents/dev/worktrees"
+  assert_equals "$expected_default" "$result" "Should return default base directory"
 
   # Test with custom environment variable
   export GTR_BASE_DIR="/custom/path"
@@ -78,15 +79,14 @@ test_gtr_is_initialized() {
   fi
 
   # Test with global config
-  mkdir -p "$HOME/.gtr"
-  touch "$HOME/.gtr/config"
+  mkdir -p "$GTR_TEST_TEMP_DIR/.gtr"
+  touch "$GTR_TEST_TEMP_DIR/.gtr/config"
 
   if ! _gtr_is_initialized; then
     assert_failure "false" "Should return true when global config exists"
   fi
 
-  # Cleanup
-  rm -rf "$HOME/.gtr"
+  # Cleanup handled by test environment teardown
   cleanup_mock_git_repo
 }
 
