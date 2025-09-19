@@ -96,6 +96,7 @@ gtr create feature0                       # from current branch
 gtr create feat1 feat2                    # multiple at once
 gtr create feature0 --base main           # base off main
 gtr create feature0 --no-install --no-open
+gtr create feature0 --dry-run             # preview what would be created
 
 # Manage and navigate
 gtr list
@@ -134,6 +135,7 @@ gtr init --doctor --fix                   # analyze and auto-add missing local f
 - **--base <BRANCH>**: base branch for creation/pruning
 
 ### Command-specific options
+- **create**: `--dry-run` (preview creation without executing)
 - **remove/rm**: `--force`, `--dry-run`
 - **prune**: `--base`, `--dry-run`, `--force`
 - **doctor**: `--fix`, `--force`
@@ -216,68 +218,82 @@ gtr uses a modular architecture with the following structure:
 gtr/
 ├── bin/
 │   ├── gtr          # Original monolithic script (2300+ lines)
-│   └── gtr-new      # New modular entry point (105 lines)
+│   ├── gtr-new      # New modular entry point (105 lines)
+│   └── test         # Convenience test script
 ├── lib/             # Core library modules
 │   ├── gtr-core.sh     # Core utilities and constants
 │   ├── gtr-ui.sh       # User interaction functions
 │   ├── gtr-config.sh   # Configuration management
 │   ├── gtr-files.sh    # File operations
 │   ├── gtr-git.sh      # Git operations
-│   └── gtr-commands.sh # Public command implementations
-└── test/            # Complete test suite
-    ├── test-helpers/    # Testing framework
-    │   ├── test-utils.sh   # Assertion framework
-    │   └── mock-git.sh     # Git mocking system
-    ├── test-core.sh         # Core functions (7 tests)
-    ├── test-config.sh       # Configuration (8 tests)
-    ├── test-files.sh        # File operations (8 tests)
-    ├── test-hooks.sh        # Hook execution (17 tests)
-    ├── test-init.sh         # Init command (9 tests)
-    ├── test-ideas.sh        # Idea management (22 tests)
-    ├── test-remove.sh       # Remove command (6 tests)
-    ├── test-stash.sh        # Stashing functionality (5 tests)
-    └── test-runner.sh       # Test runner and reporting
+│   ├── gtr-commands.sh # Public command implementations
+│   ├── gtr-ideas.sh    # Idea management system
+│   └── gtr-hooks.sh    # Hook execution system
+└── test/            # Action-based test suite (91 tests)
+    ├── actions/         # User-facing command tests (51 tests)
+    │   ├── test-create.sh   # Create command (6 tests)
+    │   ├── test-init.sh     # Init command (9 tests)
+    │   ├── test-remove.sh   # Remove command (6 tests)
+    │   ├── test-prune.sh    # Prune command (6 tests)
+    │   ├── test-stash.sh    # Stash functionality (5 tests)
+    │   └── test-ideas.sh    # Ideas management (22 tests)
+    ├── helpers/         # Shared functionality tests (40 tests)
+    │   ├── test-core.sh     # Core functions (7 tests)
+    │   ├── test-config.sh   # Configuration (8 tests)
+    │   ├── test-files.sh    # File operations (8 tests)
+    │   ├── test-hooks.sh    # Hook execution (17 tests)
+    │   ├── test-utils.sh    # Testing framework
+    │   └── mock-git.sh      # Git mocking utilities
+    └── test-runner.sh   # Enhanced test runner
 ```
 
 #### Testing
-Run the comprehensive test suite to ensure code quality:
+Run the comprehensive test suite with our action-based structure:
 
 ```bash
-# Run all tests (82 tests across 8 suites)
+# Run all tests (91 tests across 10 suites)
 ./test/test-runner.sh
+# OR use the convenience script:
+./bin/test
 
-# Run specific test suite
+# Run test categories
+./test/test-runner.sh helpers  # All helper tests (40 tests)
+./test/test-runner.sh actions  # All action tests (51 tests)
+
+# Run specific helper test suites
 ./test/test-runner.sh core     # Core functions (7 tests)
 ./test/test-runner.sh config   # Configuration (8 tests)
 ./test/test-runner.sh files    # File operations (8 tests)
 ./test/test-runner.sh hooks    # Hook execution (17 tests)
+
+# Run specific action test suites
+./test/test-runner.sh create   # Create command (6 tests)
 ./test/test-runner.sh init     # Init command (9 tests)
-./test/test-runner.sh ideas    # Idea management (22 tests)
 ./test/test-runner.sh remove   # Remove command (6 tests)
-./test/test-runner.sh stash    # Stashing functionality (5 tests)
+./test/test-runner.sh prune    # Prune command (6 tests)
+./test/test-runner.sh stash    # Stash functionality (5 tests)
+./test/test-runner.sh ideas    # Ideas management (22 tests)
 
 # List available tests
 ./test/test-runner.sh --list
 
-# Run individual test files
-bash test/test-core.sh
-bash test/test-config.sh
-bash test/test-files.sh
-bash test/test-hooks.sh
-bash test/test-init.sh
-bash test/test-ideas.sh
-bash test/test-remove.sh
-bash test/test-stash.sh
+# Run individual test files directly
+bash test/helpers/test-core.sh
+bash test/actions/test-create.sh
+# ... etc
 
 # Simulate GitHub Actions locally
 ./.github/test-local.sh
 ```
 
 **Test Framework Features:**
+- **Action-based organization** - Tests grouped by user-facing commands vs shared functionality
 - **Isolated testing environment** - Each test runs in a temporary git repository
+- **Cross-platform compatibility** - Tests use portable paths and avoid hardcoded user directories
 - **Comprehensive assertion functions** - `assert_equals`, `assert_contains`, `assert_file_exists`, etc.
 - **Git command mocking** - Mock git operations for reliable testing
 - **Automatic cleanup** - Temporary files and directories cleaned up after each test
+- **Dry-run testing** - Comprehensive tests for `--dry-run` functionality across all destructive commands
 
 **Writing Tests:**
 ```bash

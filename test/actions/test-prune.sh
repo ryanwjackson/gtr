@@ -4,13 +4,13 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/../helpers/test-utils.sh"
+source "$SCRIPT_DIR/../helpers/mock-git.sh"
 
 # Source the module under test
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
-source "$SCRIPT_DIR/../lib/gtr-git.sh"
-source "$SCRIPT_DIR/../lib/gtr-ui.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-git.sh"
+source "$SCRIPT_DIR/../../lib/gtr-ui.sh"
 
 # Test the _gtr_ask_user function with timeout
 test_gtr_ask_user_timeout() {
@@ -46,10 +46,11 @@ test_gtr_prune_dry_run() {
   enable_git_mocking
   
   # Mock git worktree list to return some worktrees
+  # Use relative paths instead of absolute temp paths for platform independence
   mock_git_worktree_list() {
-    echo "worktree /tmp/test1"
+    echo "worktree ./test1"
     echo "branch refs/heads/feature1"
-    echo "worktree /tmp/test2"
+    echo "worktree ./test2"
     echo "branch refs/heads/feature2"
   }
   
@@ -61,7 +62,7 @@ test_gtr_prune_dry_run() {
   
   # Test dry run
   local result
-  result=$(GTR_BASE_DIR="/tmp" _GTR_DRY_RUN="true" _gtr_prune_worktrees 2>&1)
+  result=$(GTR_BASE_DIR="." _GTR_DRY_RUN="true" _gtr_prune_worktrees 2>&1)
   assert_contains "$result" "DRY RUN" "Should show dry run output"
   
   disable_git_mocking
@@ -74,8 +75,9 @@ test_gtr_prune_squash_merged() {
   enable_git_mocking
 
   # Mock git worktree list to return some worktrees
+  # Use relative paths for platform independence
   mock_git_worktree_list() {
-    echo "worktree /tmp/test-squashed"
+    echo "worktree ./test-squashed"
     echo "branch refs/heads/feature-squashed"
   }
 
@@ -102,7 +104,7 @@ test_gtr_prune_squash_merged() {
 
   # Test dry run with squash merged branch
   local result
-  result=$(GTR_BASE_DIR="/tmp" _GTR_DRY_RUN="true" _gtr_prune_worktrees 2>&1)
+  result=$(GTR_BASE_DIR="." _GTR_DRY_RUN="true" _gtr_prune_worktrees 2>&1)
   assert_contains "$result" "DRY RUN" "Should show dry run output"
   assert_contains "$result" "likely squash merged" "Should detect squash merge scenario"
 
@@ -114,10 +116,11 @@ test_gtr_prune_squash_merged() {
 test_gtr_prune_force() {
   setup_mock_git_repo
   enable_git_mocking
-  
+
   # Mock git worktree list to return some worktrees
+  # Use relative paths for platform independence
   mock_git_worktree_list() {
-    echo "worktree /tmp/test1"
+    echo "worktree ./test1"
     echo "branch refs/heads/feature1"
   }
   
@@ -129,7 +132,7 @@ test_gtr_prune_force() {
   
   # Test force mode
   local result
-  result=$(GTR_BASE_DIR="/tmp" _GTR_FORCE="true" _gtr_prune_worktrees 2>&1)
+  result=$(GTR_BASE_DIR="." _GTR_FORCE="true" _gtr_prune_worktrees 2>&1)
   assert_contains "$result" "Removing" "Should show removal output in force mode"
   
   disable_git_mocking

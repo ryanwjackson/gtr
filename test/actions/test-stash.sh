@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source testing framework
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/../helpers/test-utils.sh"
 
 # Test: Basic stashing with --uncommitted=true
 test_stashing_with_flag() {

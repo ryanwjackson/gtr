@@ -7,15 +7,15 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source testing framework
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/../helpers/test-utils.sh"
 
 # Source gtr modules
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
-source "$SCRIPT_DIR/../lib/gtr-ui.sh"
-source "$SCRIPT_DIR/../lib/gtr-config.sh"
-source "$SCRIPT_DIR/../lib/gtr-files.sh"
-source "$SCRIPT_DIR/../lib/gtr-git.sh"
-source "$SCRIPT_DIR/../lib/gtr-commands.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-ui.sh"
+source "$SCRIPT_DIR/../../lib/gtr-config.sh"
+source "$SCRIPT_DIR/../../lib/gtr-files.sh"
+source "$SCRIPT_DIR/../../lib/gtr-git.sh"
+source "$SCRIPT_DIR/../../lib/gtr-commands.sh"
 
 # Test configuration
 TEST_DIR=""

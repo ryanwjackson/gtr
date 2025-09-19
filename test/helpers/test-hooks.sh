@@ -4,12 +4,12 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-utils.sh"
+source "$SCRIPT_DIR/mock-git.sh"
 
 # Source required modules
-source "$SCRIPT_DIR/../lib/gtr-core.sh"
-source "$SCRIPT_DIR/../lib/gtr-hooks.sh"
+source "$SCRIPT_DIR/../../lib/gtr-core.sh"
+source "$SCRIPT_DIR/../../lib/gtr-hooks.sh"
 
 # Test hook execution with successful hook
 test_gtr_execute_hook_success() {
@@ -89,7 +89,7 @@ EOF
 # Test finding hooks directory with local hooks
 test_gtr_find_hooks_dir_local() {
   local main_worktree="$TEST_TEMP_DIR"
-  local global_hooks_dir="$HOME/.gtr/hooks"
+  local global_hooks_dir="$GTR_TEST_TEMP_DIR/.gtr/hooks"
   local local_hooks_dir="$main_worktree/.gtr/hooks"
   
   # Create local hooks directory
@@ -107,7 +107,7 @@ test_gtr_find_hooks_dir_local() {
 # Test finding hooks directory with global hooks only
 test_gtr_find_hooks_dir_global() {
   local main_worktree="$TEST_TEMP_DIR"
-  local global_hooks_dir="$HOME/.gtr/hooks"
+  local global_hooks_dir="$GTR_TEST_TEMP_DIR/.gtr/hooks"
   
   # Ensure no local hooks directory exists
   rm -rf "$main_worktree/.gtr/hooks"

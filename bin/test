@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# bin/test - Convenience script for running gtr tests
+# Forwards all arguments to the main test runner
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Forward all arguments to the test runner
+exec "$PROJECT_ROOT/test/test-runner.sh" "$@"

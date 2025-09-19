@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # test-runner.sh - Main test runner for all gtr modules
-# Executes all test suites and reports aggregate results
+# Supports new action-based and helper-based test organization
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source testing framework
-source "$SCRIPT_DIR/test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/helpers/test-utils.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -84,17 +84,55 @@ run_all_tests() {
   echo -e "${YELLOW}===========================================${NC}"
   echo ""
 
-  # Run each test suite in order
-  run_test_suite "$SCRIPT_DIR/test-core.sh" "Core Functions"
-  run_test_suite "$SCRIPT_DIR/test-config.sh" "Configuration Management"
-  run_test_suite "$SCRIPT_DIR/test-files.sh" "File Operations"
-  run_test_suite "$SCRIPT_DIR/test-hooks.sh" "Hook Execution"
-  run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
-  run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
-  run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
-  run_test_suite "$SCRIPT_DIR/test-stash.sh" "Stashing Functionality"
+  # Run helper tests first
+  echo -e "${BLUE}=== Running Helper Tests ===${NC}"
+  run_test_suite "$SCRIPT_DIR/helpers/test-core.sh" "Core Functions"
+  run_test_suite "$SCRIPT_DIR/helpers/test-config.sh" "Configuration Management"
+  run_test_suite "$SCRIPT_DIR/helpers/test-files.sh" "File Operations"
+  run_test_suite "$SCRIPT_DIR/helpers/test-hooks.sh" "Hook Execution"
+
+  # Run action tests
+  echo -e "${BLUE}=== Running Action Tests ===${NC}"
+  run_test_suite "$SCRIPT_DIR/actions/test-create.sh" "Create Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-init.sh" "Init Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-remove.sh" "Remove Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-prune.sh" "Prune Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
+  run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
 
   # Show final summary
+  show_final_summary
+}
+
+# Function to run helper tests
+run_helper_tests() {
+  echo -e "${YELLOW}===========================================${NC}"
+  echo -e "${YELLOW}         HELPER TESTS ONLY${NC}"
+  echo -e "${YELLOW}===========================================${NC}"
+  echo ""
+
+  run_test_suite "$SCRIPT_DIR/helpers/test-core.sh" "Core Functions"
+  run_test_suite "$SCRIPT_DIR/helpers/test-config.sh" "Configuration Management"
+  run_test_suite "$SCRIPT_DIR/helpers/test-files.sh" "File Operations"
+  run_test_suite "$SCRIPT_DIR/helpers/test-hooks.sh" "Hook Execution"
+
+  show_final_summary
+}
+
+# Function to run action tests
+run_action_tests() {
+  echo -e "${YELLOW}===========================================${NC}"
+  echo -e "${YELLOW}         ACTION TESTS ONLY${NC}"
+  echo -e "${YELLOW}===========================================${NC}"
+  echo ""
+
+  run_test_suite "$SCRIPT_DIR/actions/test-create.sh" "Create Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-init.sh" "Init Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-remove.sh" "Remove Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-prune.sh" "Prune Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
+  run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
+
   show_final_summary
 }
 
@@ -103,33 +141,49 @@ run_specific_test() {
   local test_name="$1"
 
   case "$test_name" in
+    # Helper tests
     core)
-      run_test_suite "$SCRIPT_DIR/test-core.sh" "Core Functions"
+      run_test_suite "$SCRIPT_DIR/helpers/test-core.sh" "Core Functions"
       ;;
     config)
-      run_test_suite "$SCRIPT_DIR/test-config.sh" "Configuration Management"
+      run_test_suite "$SCRIPT_DIR/helpers/test-config.sh" "Configuration Management"
       ;;
     files)
-      run_test_suite "$SCRIPT_DIR/test-files.sh" "File Operations"
+      run_test_suite "$SCRIPT_DIR/helpers/test-files.sh" "File Operations"
       ;;
     hooks)
-      run_test_suite "$SCRIPT_DIR/test-hooks.sh" "Hook Execution"
+      run_test_suite "$SCRIPT_DIR/helpers/test-hooks.sh" "Hook Execution"
+      ;;
+    # Action tests
+    create)
+      run_test_suite "$SCRIPT_DIR/actions/test-create.sh" "Create Command"
       ;;
     init)
-      run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
-      ;;
-    ideas)
-      run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
+      run_test_suite "$SCRIPT_DIR/actions/test-init.sh" "Init Command"
       ;;
     remove)
-      run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
+      run_test_suite "$SCRIPT_DIR/actions/test-remove.sh" "Remove Command"
+      ;;
+    prune)
+      run_test_suite "$SCRIPT_DIR/actions/test-prune.sh" "Prune Command"
       ;;
     stash)
-      run_test_suite "$SCRIPT_DIR/test-stash.sh" "Stashing Functionality"
+      run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
+      ;;
+    ideas)
+      run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
+      ;;
+    # Groups
+    helpers)
+      run_helper_tests
+      ;;
+    actions)
+      run_action_tests
       ;;
     *)
       echo -e "${RED}Unknown test: $test_name${NC}"
-      echo "Available tests: core, config, files, hooks, init, ideas, remove, stash"
+      echo ""
+      list_tests
       return 1
       ;;
   esac
@@ -138,19 +192,32 @@ run_specific_test() {
 # Function to list available tests
 list_tests() {
   echo "Available test suites:"
-  echo "  core    - Core functions and utilities"
-  echo "  config  - Configuration management"
-  echo "  files   - File operations and copying"
-  echo "  hooks   - Hook execution and management"
-  echo "  init    - Init command functionality"
-  echo "  ideas   - Idea management functionality"
-  echo "  stash   - Stashing functionality for worktree creation"
+  echo ""
+  echo "Helper tests (shared functionality):"
+  echo "  core     - Core functions and utilities"
+  echo "  config   - Configuration management"
+  echo "  files    - File operations and copying"
+  echo "  hooks    - Hook execution and management"
+  echo ""
+  echo "Action tests (user-facing commands):"
+  echo "  create   - Create command functionality"
+  echo "  init     - Init command functionality"
+  echo "  remove   - Remove command functionality"
+  echo "  prune    - Prune command functionality"
+  echo "  stash    - Stash functionality"
+  echo "  ideas    - Ideas management functionality"
+  echo ""
+  echo "Groups:"
+  echo "  helpers  - Run all helper tests"
+  echo "  actions  - Run all action tests"
   echo ""
   echo "Usage:"
-  echo "  $0              # Run all tests"
-  echo "  $0 <test-name>  # Run specific test"
-  echo "  $0 --list       # List available tests"
-  echo "  $0 --help       # Show this help"
+  echo "  $0                # Run all tests"
+  echo "  $0 <test-name>    # Run specific test"
+  echo "  $0 helpers        # Run all helper tests"
+  echo "  $0 actions        # Run all action tests"
+  echo "  $0 --list         # List available tests"
+  echo "  $0 --help         # Show this help"
 }
 
 # Function to check prerequisites
@@ -195,6 +262,8 @@ validate_modules() {
     "gtr-files.sh"
     "gtr-git.sh"
     "gtr-commands.sh"
+    "gtr-ideas.sh"
+    "gtr-hooks.sh"
   )
 
   local missing_modules=()
