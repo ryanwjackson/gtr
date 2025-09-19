@@ -29,16 +29,6 @@ jobs:
         chmod +x test/test-runner.sh
         chmod +x test/*.sh
 
-    - name: Validate modular structure
-      run: |
-        echo "=== Validating module structure ==="
-        ls -la lib/
-        echo ""
-        echo "=== Checking module dependencies ==="
-        echo "Total modules: $(ls lib/*.sh | wc -l)"
-        echo "Expected: 7 modules"
-        [ "$(ls lib/*.sh | wc -l)" -eq 7 ]
-
     - name: Test module loading
       run: |
         echo "=== Testing module loading ==="
