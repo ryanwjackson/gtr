@@ -217,6 +217,7 @@ COMMANDS:
     create, c [summary]        Create a new idea file (default: prompt for summary)
     list, l [OPTIONS]          List all ideas with optional filtering
     open, o [OPTIONS]          Interactive idea opener with optional filtering
+    clear                      Clear all ideas across all worktrees (with confirmation)
     --help, -h                 Show this help message
 
 OPTIONS:
@@ -242,6 +243,9 @@ EXAMPLES:
     gtr idea open                      # Interactive opener for all ideas
     gtr idea open --mine               # Interactive opener for your ideas only
 
+    # Clear ideas
+    gtr idea clear                     # Clear all ideas (with confirmation)
+
 FEATURES:
     • Ideas are stored in .gtr/ideas/ directory
     • Automatic metadata including author, timestamp, repo info
@@ -263,7 +267,8 @@ gtr_idea_create() {
   
   # If no summary provided, prompt for it
   if [[ -z "$summary" ]]; then
-    summary=$(_gtr_ask_user "Enter idea summary: " "")
+    printf "Enter idea summary: "
+    read -r summary
     if [[ -z "$summary" ]]; then
       echo "❌ No summary provided. Idea creation cancelled."
       return 1
@@ -522,6 +527,105 @@ gtr_idea_open() {
   done
 }
 
+gtr_idea_clear() {
+  # Get all worktree directories to find all idea files
+  local worktree_dirs=($(_gtr_get_all_worktree_dirs))
+  local idea_files=()
+  local total_ideas=0
+  
+  # Search for idea files in all worktrees
+  for worktree_dir in "${worktree_dirs[@]}"; do
+    local ideas_dir="$worktree_dir/.gtr/ideas"
+    if [[ -d "$ideas_dir" ]]; then
+      while IFS= read -r -d '' file; do
+        if [[ -f "$file" && "$file" == *.md ]]; then
+          idea_files+=("$file")
+          ((total_ideas++))
+        fi
+      done < <(find "$ideas_dir" -name "*.md" -type f -print0 2>/dev/null)
+    fi
+  done
+  
+  if [[ $total_ideas -eq 0 ]]; then
+    echo "No ideas found to clear."
+    return 0
+  fi
+  
+  echo "🗑️  Found $total_ideas idea(s) across all worktrees:"
+  echo ""
+  
+  # Show what will be deleted
+  for file in "${idea_files[@]}"; do
+    local filename=$(basename "$file")
+    local worktree_name=$(basename "$(dirname "$(dirname "$file")")")
+    local summary=""
+    
+    # Extract summary from YAML front matter
+    local in_frontmatter=false
+    while IFS= read -r line; do
+      if [[ "$line" == "---" ]]; then
+        if [[ "$in_frontmatter" == "false" ]]; then
+          in_frontmatter=true
+        else
+          break
+        fi
+      elif [[ "$in_frontmatter" == "true" ]]; then
+        case "$line" in
+          summary:*)
+            summary="${line#summary: }"
+            summary="${summary%\"}"
+            summary="${summary#\"}"
+            break
+            ;;
+        esac
+      fi
+    done < "$file"
+    
+    if [[ -n "$summary" ]]; then
+      echo "  📄 $filename: $summary"
+    else
+      echo "  📄 $filename"
+    fi
+  done
+  
+  echo ""
+  echo "⚠️  This will permanently delete ALL idea files across all worktrees."
+  echo ""
+  
+  # Ask for confirmation
+  echo ""
+  printf "Are you sure you want to clear all ideas? Type 'yes' to confirm: "
+  read -r confirm
+  
+  if [[ "$confirm" != "yes" ]]; then
+    echo "❌ Idea clearing cancelled."
+    return 0
+  fi
+  
+  # Delete all idea files
+  local deleted_count=0
+  for file in "${idea_files[@]}"; do
+    if rm "$file" 2>/dev/null; then
+      ((deleted_count++))
+    else
+      echo "⚠️  Failed to delete: $file"
+    fi
+  done
+  
+  echo "✅ Cleared $deleted_count idea(s) successfully."
+  
+  # Clean up empty ideas directories
+  for worktree_dir in "${worktree_dirs[@]}"; do
+    local ideas_dir="$worktree_dir/.gtr/ideas"
+    if [[ -d "$ideas_dir" ]]; then
+      # Check if directory is empty (only contains . and ..)
+      if [[ -z "$(ls -A "$ideas_dir" 2>/dev/null)" ]]; then
+        rmdir "$ideas_dir" 2>/dev/null && echo "📁 Removed empty ideas directory: $ideas_dir"
+      fi
+    fi
+  done
+}
+
 gtr_idea() {
   local subcmd="${_GTR_ARGS[0]:-}"
   
@@ -533,7 +637,7 @@ gtr_idea() {
   
   # Check if first argument is a known subcommand
   case "$subcmd" in
-    c|create|l|list|o|open)
+    c|create|l|list|o|open|clear)
       # Remove the subcommand from args
       if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
         _GTR_ARGS=("${_GTR_ARGS[@]:1}")
@@ -548,6 +652,9 @@ gtr_idea() {
           ;;
         o|open)
           gtr_idea_open
+          ;;
+        clear)
+          gtr_idea_clear
           ;;
       esac
       ;;

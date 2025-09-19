@@ -393,10 +393,10 @@ EOF
 
 # Helper function to get ideas directory
 # Usage: _gtr_get_ideas_dir
-# Returns: path to .gtr/ideas directory
+# Returns: path to .gtr/ideas directory in current worktree
 _gtr_get_ideas_dir() {
-  local main_worktree="$(_gtr_get_main_worktree)"
-  echo "$main_worktree/.gtr/ideas"
+  local current_worktree="$(pwd)"
+  echo "$current_worktree/.gtr/ideas"
 }
 
 # Helper function to create ideas directory if it doesn't exist
