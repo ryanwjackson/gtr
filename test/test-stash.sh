@@ -34,7 +34,8 @@ test_stashing_with_flag() {
   assert_contains "$stash_list" "test-stash" "Stash should exist with worktree name"
 
   # Verify changes are available in the new worktree
-  local worktree_path="/Users/ryanwjackson/Documents/dev/worktrees/"$(basename "$GTR_TEST_TEMP_DIR")/test-stash
+  # Get the actual worktree path from git worktree list
+  local worktree_path=$(git worktree list | grep "test-stash" | awk '{print $1}')
   if [[ -d "$worktree_path" ]]; then
     cd "$worktree_path"
     # Verify the staged file was copied to the worktree
@@ -102,7 +103,8 @@ test_stashing_mixed_changes() {
   assert_not_equals "$stash_list" "" "Stash should contain the mixed changes"
 
   # Verify all changes are copied to the new worktree
-  local worktree_path="/Users/ryanwjackson/Documents/dev/worktrees/"$(basename "$GTR_TEST_TEMP_DIR")/test-mixed
+  # Get the actual worktree path from git worktree list
+  local worktree_path=$(git worktree list | grep "test-mixed" | awk '{print $1}')
   if [[ -d "$worktree_path" ]]; then
     cd "$worktree_path"
     # Check that all types of files were copied
