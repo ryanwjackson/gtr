@@ -186,10 +186,18 @@ jobs:
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
           SUFFIX=""
           if [[ "$DRY" == "true" ]]; then SUFFIX="-dryrun"; fi
-          BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}$SUFFIX"
 
-          # Delete remote branch if it exists to avoid conflicts
-          git push origin --delete "$BRANCH" 2>/dev/null || echo "Branch $BRANCH doesn't exist on remote, continuing..."
+          # Use timestamp to make branch names unique for retries/re-runs
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}-${TIMESTAMP}$SUFFIX"
+
+          # Clean up old bump branches for this version (keep last 3)
+          echo "Cleaning up old bump branches for version ${{ steps.meta.outputs.tag }}..."
+          OLD_BRANCHES=$(gh api repos/"$TAP_OWNER"/"$TAP_REPO"/branches --jq '.[] | select(.name | startswith("bump-gtr-${{ steps.meta.outputs.tag }}-")) | .name' | sort -r | tail -n +4)
+          for old_branch in $OLD_BRANCHES; do
+            echo "Deleting old branch: $old_branch"
+            gh api repos/"$TAP_OWNER"/"$TAP_REPO"/git/refs/heads/"$old_branch" -X DELETE 2>/dev/null || echo "Failed to delete $old_branch, continuing..."
+          done
 
           git checkout -b "$BRANCH"
 
