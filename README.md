@@ -224,28 +224,37 @@ gtr/
 │   ├── gtr-files.sh    # File operations
 │   ├── gtr-git.sh      # Git operations
 │   └── gtr-commands.sh # Public command implementations
-├── test/            # Unit tests
-│   ├── test-core.sh
-│   ├── test-config.sh
-│   ├── test-files.sh
-│   └── test-runner.sh
-└── test-helpers/    # Testing framework
-    ├── test-utils.sh   # Assertion framework
-    └── mock-git.sh     # Git mocking system
+└── test/            # Complete test suite
+    ├── test-helpers/    # Testing framework
+    │   ├── test-utils.sh   # Assertion framework
+    │   └── mock-git.sh     # Git mocking system
+    ├── test-core.sh         # Core functions (7 tests)
+    ├── test-config.sh       # Configuration (8 tests)
+    ├── test-files.sh        # File operations (8 tests)
+    ├── test-hooks.sh        # Hook execution (17 tests)
+    ├── test-init.sh         # Init command (9 tests)
+    ├── test-ideas.sh        # Idea management (22 tests)
+    ├── test-remove.sh       # Remove command (6 tests)
+    ├── test-stash.sh        # Stashing functionality (5 tests)
+    └── test-runner.sh       # Test runner and reporting
 ```
 
 #### Testing
 Run the comprehensive test suite to ensure code quality:
 
 ```bash
-# Run all tests (30+ tests across 4 suites)
+# Run all tests (82 tests across 8 suites)
 ./test/test-runner.sh
 
 # Run specific test suite
-./test/test-runner.sh core    # Core functions (7 tests)
-./test/test-runner.sh config  # Configuration (8 tests)
-./test/test-runner.sh files   # File operations (8 tests)
-./test/test-runner.sh ideas   # Idea management (8+ tests)
+./test/test-runner.sh core     # Core functions (7 tests)
+./test/test-runner.sh config   # Configuration (8 tests)
+./test/test-runner.sh files    # File operations (8 tests)
+./test/test-runner.sh hooks    # Hook execution (17 tests)
+./test/test-runner.sh init     # Init command (9 tests)
+./test/test-runner.sh ideas    # Idea management (22 tests)
+./test/test-runner.sh remove   # Remove command (6 tests)
+./test/test-runner.sh stash    # Stashing functionality (5 tests)
 
 # List available tests
 ./test/test-runner.sh --list
@@ -254,10 +263,35 @@ Run the comprehensive test suite to ensure code quality:
 bash test/test-core.sh
 bash test/test-config.sh
 bash test/test-files.sh
+bash test/test-hooks.sh
+bash test/test-init.sh
 bash test/test-ideas.sh
+bash test/test-remove.sh
+bash test/test-stash.sh
 
 # Simulate GitHub Actions locally
 ./.github/test-local.sh
+```
+
+**Test Framework Features:**
+- **Isolated testing environment** - Each test runs in a temporary git repository
+- **Comprehensive assertion functions** - `assert_equals`, `assert_contains`, `assert_file_exists`, etc.
+- **Git command mocking** - Mock git operations for reliable testing
+- **Automatic cleanup** - Temporary files and directories cleaned up after each test
+
+**Writing Tests:**
+```bash
+# Test function template
+test_new_feature() {
+  # Setup isolated environment
+  setup_test_env
+
+  # Test your function
+  local result=$(your_function "input")
+  assert_equals "expected" "$result" "Should return expected value"
+
+  # Cleanup handled automatically
+}
 ```
 
 **Continuous Integration**: Tests run automatically on GitHub Actions for all pushes and pull requests. See `.github/workflows/ci.yml` for the main CI pipeline.

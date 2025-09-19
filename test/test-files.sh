@@ -4,8 +4,8 @@
 
 # Source the testing framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test-helpers/test-utils.sh"
-source "$SCRIPT_DIR/../test-helpers/mock-git.sh"
+source "$SCRIPT_DIR/test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/test-helpers/mock-git.sh"
 
 # Source required modules
 source "$SCRIPT_DIR/../lib/gtr-ui.sh"

@@ -694,6 +694,8 @@ _gtr_parse_global_flags() {
   local username=$(whoami)
   local base_branch=""
   local untracked=""
+  local uncommitted=""
+  local git_root=""
   local args=()
   local extra_args=()
   local parsing_extra=false
@@ -807,14 +809,30 @@ _gtr_parse_global_flags() {
         shift
         ;;
       --uncommitted)
-        echo "Error: --uncommitted flag has been renamed to --untracked"
-        echo "Please use --untracked instead"
-        return 1
+        if [[ -n "$2" ]]; then
+          uncommitted="$2"
+          shift 2
+        else
+          echo "Error: --uncommitted requires a value (true or false)"
+          return 1
+        fi
         ;;
       --uncommitted=*)
-        echo "Error: --uncommitted flag has been renamed to --untracked"
-        echo "Please use --untracked instead"
-        return 1
+        uncommitted="${1#*=}"
+        shift
+        ;;
+      --git-root)
+        if [[ -n "$2" ]]; then
+          git_root="$2"
+          shift 2
+        else
+          echo "Error: --git-root requires a directory path"
+          return 1
+        fi
+        ;;
+      --git-root=*)
+        git_root="${1#*=}"
+        shift
         ;;
       --force|--dry-run|--mine|--todo|--status=*|--filter=*)
         # These are command-specific flags, pass them through
@@ -823,7 +841,7 @@ _gtr_parse_global_flags() {
         ;;
       --*)
         echo "Error: Unknown option '$1'"
-        echo "Valid global options: --prefix, --username, --editor, --no-open, --no-install, --base, --untracked"
+        echo "Valid global options: --prefix, --username, --editor, --no-open, --no-install, --base, --untracked, --uncommitted, --git-root"
         echo "Command-specific options: --force, --dry-run (for rm command), --mine, --todo, --status, --filter (for idea command)"
         return 1
         ;;
@@ -856,6 +874,8 @@ _gtr_parse_global_flags() {
   export _GTR_USERNAME="$username"
   export _GTR_BASE_BRANCH="$base_branch"
   export _GTR_UNTRACKED="$untracked"
+  export _GTR_UNCOMMITTED="$uncommitted"
+  export _GTR_GIT_ROOT="$git_root"
   
   # Set _GTR_ARGS and _GTR_EXTRA_ARGS in the global scope
   _GTR_ARGS=("${args[@]}")
@@ -953,32 +973,36 @@ _gtr_create_worktree() {
   
   # Handle uncommitted changes if requested
   local uncommitted_files=()
-  if [[ "$untracked" == "true" ]]; then
-    # Check if there are uncommitted changes (modified, added, staged, or new files)
-    local uncommitted_status=$(git status --porcelain)
-    if [[ -n "$uncommitted_status" ]]; then
+  local stash_created=false
+  local uncommitted="${_GTR_UNCOMMITTED:-true}"
+
+  # Check for uncommitted changes and handle them appropriately
+  local uncommitted_status=$(git status --porcelain)
+  if [[ -n "$uncommitted_status" ]]; then
+    if [[ "$uncommitted" == "true" ]]; then
+      # Use stashing for --uncommitted=true
       echo "📁 Including uncommitted changes in worktree..."
-      
-      # Collect files to copy and log each file that will be moved
+
+      # Show what files will be stashed
       while IFS= read -r line; do
         # Skip empty lines
         if [[ -z "$line" ]]; then
           continue
         fi
-        
+
         local status_code="${line:0:2}"
         local file_path="${line:3}"
-        
+
         # Handle renamed files (R  old -> new)
         if [[ "$status_code" =~ ^R ]]; then
           file_path=$(echo "$file_path" | sed 's/.*-> //')
         fi
-        
+
         # Skip if no file path
         if [[ -z "$file_path" ]]; then
           continue
         fi
-        
+
         # Determine the type of change
         local change_type=""
         case "$status_code" in
@@ -994,7 +1018,72 @@ _gtr_create_worktree() {
           "C ") change_type="copied" ;;
           *) change_type="changed" ;;
         esac
-        
+
+        echo "  📄 $change_type: $file_path"
+      done <<< "$uncommitted_status"
+
+      # For stashing mode, collect files but don't stash yet - we'll copy to worktree first, then stash
+      while IFS= read -r line; do
+        # Skip empty lines
+        if [[ -z "$line" ]]; then
+          continue
+        fi
+
+        local status_code="${line:0:2}"
+        local file_path="${line:3}"
+
+        # Handle renamed files (R  old -> new)
+        if [[ "$status_code" =~ ^R ]]; then
+          file_path=$(echo "$file_path" | sed 's/.*-> //')
+        fi
+
+        # Skip if no file path
+        if [[ -z "$file_path" ]]; then
+          continue
+        fi
+
+        uncommitted_files+=("$file_path")
+      done <<< "$uncommitted_status"
+    elif [[ "$untracked" == "true" ]]; then
+      # Use file copying for --untracked=true (legacy behavior)
+      echo "📁 Including uncommitted changes in worktree..."
+
+      # Collect files to copy and log each file that will be moved
+      while IFS= read -r line; do
+        # Skip empty lines
+        if [[ -z "$line" ]]; then
+          continue
+        fi
+
+        local status_code="${line:0:2}"
+        local file_path="${line:3}"
+
+        # Handle renamed files (R  old -> new)
+        if [[ "$status_code" =~ ^R ]]; then
+          file_path=$(echo "$file_path" | sed 's/.*-> //')
+        fi
+
+        # Skip if no file path
+        if [[ -z "$file_path" ]]; then
+          continue
+        fi
+
+        # Determine the type of change
+        local change_type=""
+        case "$status_code" in
+          "??") change_type="new file" ;;
+          " M") change_type="modified" ;;
+          "M ") change_type="staged" ;;
+          "MM") change_type="modified and staged" ;;
+          "A ") change_type="added" ;;
+          "AM") change_type="added and modified" ;;
+          "D ") change_type="deleted" ;;
+          " D") change_type="deleted (staged)" ;;
+          "R ") change_type="renamed" ;;
+          "C ") change_type="copied" ;;
+          *) change_type="changed" ;;
+        esac
+
         echo "  📄 $change_type: $file_path"
         uncommitted_files+=("$file_path")
       done <<< "$uncommitted_status"
@@ -1027,7 +1116,22 @@ _gtr_create_worktree() {
         fi
       done
       
-      echo "  ℹ️  Files copied to worktree. Git states (staged/modified) will need to be recreated manually."
+      # If we're in stashing mode, now stash the original changes after copying to worktree
+      if [[ "$uncommitted" == "true" ]]; then
+        echo "  ✅ Changes copied to worktree"
+
+        # Now create the stash in the original location
+        local stash_message="Stashed for worktree: $name, branch: $branch_name"
+        if git stash push -u -m "$stash_message" >/dev/null 2>&1; then
+          echo "📦 Stashed original changes with message: '$stash_message'"
+          echo "ℹ️  Use 'git stash pop' to restore changes to original location if needed"
+          stash_created=true
+        else
+          echo "⚠️  Warning: Failed to stash original changes (changes were copied to worktree)"
+        fi
+      else
+        echo "  ℹ️  Files copied to worktree. Git states (staged/modified) will need to be recreated manually."
+      fi
     fi
 
     # Copy local files from main worktree to new worktree (only if we have files to copy)
@@ -2359,20 +2463,65 @@ EOF
 
 # Main gtr function - dispatches to appropriate sub-commands
 gtr() {
+  # Handle global flags first (like --git-root)
+  local git_root=""
+  local args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --git-root)
+        if [[ -n "$2" ]]; then
+          git_root="$2"
+          shift 2
+        else
+          echo "Error: --git-root requires a directory path"
+          return 1
+        fi
+        ;;
+      --git-root=*)
+        git_root="${1#*=}"
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  # Change to git root if specified
+  if [[ -n "$git_root" ]]; then
+    if [[ ! -d "$git_root" ]]; then
+      echo "Error: Git root directory does not exist: $git_root"
+      return 1
+    fi
+    if ! cd "$git_root"; then
+      echo "Error: Cannot change to git root directory: $git_root"
+      return 1
+    fi
+    # Verify it's a git repository
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+      echo "Error: Directory is not a git repository: $git_root"
+      return 1
+    fi
+  fi
+
+  # Restore args and get command
+  set -- "${args[@]}"
   local cmd="$1"
-  
+
   # Handle version/help flags before parsing other arguments
   if [[ "$cmd" == "--version" || "$cmd" == "-v" ]]; then
     _gtr_print_version
     return 0
   fi
-  
+
   # Handle help flag before parsing other arguments
   if [[ "$cmd" == "--help" || "$cmd" == "-h" ]]; then
     _gtr_show_help
     return 0
   fi
-  
+
   shift || { echo "Usage: gtr {create|rm|cd|claude|cursor|prune|doctor|init} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
 
   # Check for command-specific flags before parsing global flags

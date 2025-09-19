@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source testing framework
-source "$SCRIPT_DIR/../test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/test-helpers/test-utils.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -92,6 +92,7 @@ run_all_tests() {
   run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
   run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
   run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
+  run_test_suite "$SCRIPT_DIR/test-stash.sh" "Stashing Functionality"
 
   # Show final summary
   show_final_summary
@@ -123,9 +124,12 @@ run_specific_test() {
     remove)
       run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
       ;;
+    stash)
+      run_test_suite "$SCRIPT_DIR/test-stash.sh" "Stashing Functionality"
+      ;;
     *)
       echo -e "${RED}Unknown test: $test_name${NC}"
-      echo "Available tests: core, config, files, hooks, init, ideas, remove"
+      echo "Available tests: core, config, files, hooks, init, ideas, remove, stash"
       return 1
       ;;
   esac
@@ -140,6 +144,7 @@ list_tests() {
   echo "  hooks   - Hook execution and management"
   echo "  init    - Init command functionality"
   echo "  ideas   - Idea management functionality"
+  echo "  stash   - Stashing functionality for worktree creation"
   echo ""
   echo "Usage:"
   echo "  $0              # Run all tests"
