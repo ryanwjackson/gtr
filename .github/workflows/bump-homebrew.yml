@@ -187,6 +187,10 @@ jobs:
           SUFFIX=""
           if [[ "$DRY" == "true" ]]; then SUFFIX="-dryrun"; fi
           BRANCH="bump-gtr-${{ steps.meta.outputs.tag }}$SUFFIX"
+
+          # Delete remote branch if it exists to avoid conflicts
+          git push origin --delete "$BRANCH" 2>/dev/null || echo "Branch $BRANCH doesn't exist on remote, continuing..."
+
           git checkout -b "$BRANCH"
 
           # Configure git identity (can also set via repo variables)
