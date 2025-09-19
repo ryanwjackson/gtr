@@ -87,6 +87,7 @@ run_all_tests() {
   run_test_suite "$SCRIPT_DIR/test-hooks.sh" "Hook Execution"
   run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
   run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
+  run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
 
   # Show final summary
   show_final_summary
@@ -115,9 +116,12 @@ run_specific_test() {
     ideas)
       run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
       ;;
+    remove)
+      run_test_suite "$SCRIPT_DIR/test-remove.sh" "Remove Command"
+      ;;
     *)
       echo -e "${RED}Unknown test: $test_name${NC}"
-      echo "Available tests: core, config, files, hooks, init, ideas"
+      echo "Available tests: core, config, files, hooks, init, ideas, remove"
       return 1
       ;;
   esac
