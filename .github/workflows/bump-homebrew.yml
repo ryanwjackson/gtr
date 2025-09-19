@@ -3,6 +3,7 @@ name: Bump Homebrew Formula
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
       tag:
@@ -38,7 +39,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          
+
+          # For tag pushes, use the pushed tag directly
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            echo "Using pushed tag: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # For workflow_dispatch, use the provided tag or find latest release
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ -n "${{ github.event.inputs.tag }}" ]]; then
