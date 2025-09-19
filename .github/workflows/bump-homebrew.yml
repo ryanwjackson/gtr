@@ -99,6 +99,7 @@ jobs:
         run: gh auth status
 
       - name: Compute tarball URL and SHA256
+        if: steps.check_release.outputs.should_run == 'true'
         id: meta
         shell: bash
         run: |
@@ -117,6 +118,7 @@ jobs:
           echo "sha256=$SHA256"   >> "$GITHUB_OUTPUT"
 
       - name: Rebuild tarball with injected version & upload asset
+        if: steps.check_release.outputs.should_run == 'true'
         id: pack
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
@@ -124,6 +126,13 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.meta.outputs.tag }}"
+
+          # Debug: verify we have a valid tag
+          if [[ -z "$TAG" ]]; then
+            echo "ERROR: TAG is empty"
+            exit 1
+          fi
+          echo "Using tag: $TAG"
 
           # Unpack original source
           rm -rf src
@@ -154,6 +163,7 @@ jobs:
           echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
 
       - name: Clone tap and bump formula
+        if: steps.check_release.outputs.should_run == 'true'
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_BUMP_TOKEN }}
         shell: bash
