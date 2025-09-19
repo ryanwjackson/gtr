@@ -38,11 +38,11 @@ fi
 #     fi
 # fi
 
-# Example: Check for untracked files
+# Example: Check for uncommitted files
 # if [[ -d "$WORKTREE_PATH" ]]; then
-#     UNTRACKED_FILES=$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard | wc -l)
-#     if [[ "$UNTRACKED_FILES" -gt 0 ]]; then
-#         echo "⚠️  Worktree has $UNTRACKED_FILES untracked files"
+#     UNCOMMITTED_FILES=$(git -C "$WORKTREE_PATH" status --porcelain | wc -l)
+#     if [[ "$UNCOMMITTED_FILES" -gt 0 ]]; then
+#         echo "⚠️  Worktree has $UNCOMMITTED_FILES uncommitted files"
 #         if [[ "$FORCE" != "true" ]]; then
 #             echo "❌ Aborting removal (use --force to override)"
 #             exit 1
