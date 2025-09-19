@@ -177,19 +177,19 @@ gtr_prune() {
 gtr_init() {
   local init_doctor="${_GTR_INIT_DOCTOR:-false}"
   local init_fix="${_GTR_INIT_FIX:-false}"
-  local main_worktree="$(_gtr_get_main_worktree)"
+  local current_dir="$(pwd)"
   local global_config_dir="$HOME/.gtr"
   local global_config_file="$global_config_dir/config"
-  local local_config_dir="$main_worktree/.gtr"
+  local local_config_dir="$current_dir/.gtr"
   local local_config_file="$local_config_dir/config"
-
+  
   if [[ "$init_doctor" == "true" ]]; then
     # For doctor mode, check the config that would be used
     local config_file="$local_config_file"
     if [[ ! -f "$local_config_file" && -f "$global_config_file" ]]; then
       config_file="$global_config_file"
     fi
-    _gtr_init_doctor "$main_worktree" "$config_file" "$init_fix"
+    _gtr_init_doctor "$current_dir" "$config_file" "$init_fix"
   else
     # Ask about global config first
     if [[ ! -f "$global_config_file" ]]; then
@@ -250,7 +250,7 @@ gtr_init() {
       fi
       case "$choice" in
         [yY]|[yY][eE][sS])
-          _gtr_init_config "$main_worktree" "$local_config_dir" "$local_config_file"
+          _gtr_init_config "$current_dir" "$local_config_dir" "$local_config_file"
           ;;
         *)
           echo "✅ Using global configuration at $global_config_file"
@@ -258,7 +258,7 @@ gtr_init() {
       esac
     else
       echo "📋 Local config already exists: $local_config_file"
-      _gtr_init_config "$main_worktree" "$local_config_dir" "$local_config_file"
+      _gtr_init_config "$current_dir" "$local_config_dir" "$local_config_file"
     fi
   fi
 }
@@ -369,9 +369,14 @@ gtr_doctor() {
     fi
   done
 
+  # Check hooks
+  local missing_hooks=()
+  local different_hooks=()
+  _gtr_check_hooks "$main_worktree" "$worktree_path" missing_hooks different_hooks
+
   # Report findings
-  if [[ ${#missing_files[@]} -eq 0 && ${#different_files[@]} -eq 0 && ${#missing_dirs[@]} -eq 0 ]]; then
-    echo "✅ All local files are present and up-to-date in the worktree"
+  if [[ ${#missing_files[@]} -eq 0 && ${#different_files[@]} -eq 0 && ${#missing_dirs[@]} -eq 0 && ${#missing_hooks[@]} -eq 0 && ${#different_hooks[@]} -eq 0 ]]; then
+    echo "✅ All local files and hooks are present and up-to-date in the worktree"
     return 0
   fi
 
@@ -396,10 +401,31 @@ gtr_doctor() {
     done
   fi
 
+  if [[ ${#missing_hooks[@]} -gt 0 ]]; then
+    echo "❌ Missing hooks in worktree:"
+    for hook in "${missing_hooks[@]}"; do
+      echo "  - $hook"
+    done
+  fi
+
+  if [[ ${#different_hooks[@]} -gt 0 ]]; then
+    echo "⚠️  Different hooks in worktree:"
+    for hook in "${different_hooks[@]}"; do
+      echo "  - $hook"
+    done
+  fi
+
   if [[ "$fix_mode" == "true" ]]; then
     echo ""
     echo "🔧 Fixing files..."
     _gtr_copy_local_files "$main_worktree" "$worktree_path" "$force_mode" "$main_worktree"
+    
+    # Fix hooks if needed
+    if [[ ${#missing_hooks[@]} -gt 0 || ${#different_hooks[@]} -gt 0 ]]; then
+      echo "🔧 Fixing hooks..."
+      _gtr_copy_hooks_to_worktree "$main_worktree" "$worktree_path"
+    fi
+    
     echo "✅ Fix complete!"
   else
     echo ""
@@ -665,4 +691,88 @@ gtr_idea() {
       return 1
       ;;
   esac
+}
+
+_gtr_check_hooks() {
+  local main_worktree="$1"
+  local worktree_path="$2"
+  local -n missing_hooks_ref="$3"
+  local -n different_hooks_ref="$4"
+  
+  local global_hooks_dir="$HOME/.gtr/hooks"
+  local local_hooks_dir="$main_worktree/.gtr/hooks"
+  local worktree_hooks_dir="$worktree_path/.gtr/hooks"
+  
+  # Determine which hooks directory to use as source
+  local source_hooks_dir=""
+  if [[ -d "$local_hooks_dir" ]]; then
+    source_hooks_dir="$local_hooks_dir"
+  elif [[ -d "$global_hooks_dir" ]]; then
+    source_hooks_dir="$global_hooks_dir"
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    return 0  # No hooks to check
+  fi
+  
+  # Check each hook in the source directory
+  for hook_file in "$source_hooks_dir"/*; do
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file")"
+      local worktree_hook="$worktree_hooks_dir/$hook_name"
+      
+      if [[ ! -f "$worktree_hook" ]]; then
+        missing_hooks_ref+=("$hook_name")
+      elif _gtr_files_different "$hook_file" "$worktree_hook"; then
+        different_hooks_ref+=("$hook_name")
+      fi
+    fi
+  done
+}
+
+_gtr_copy_hooks_to_worktree() {
+  local main_worktree="$1"
+  local worktree_path="$2"
+  
+  local global_hooks_dir="$HOME/.gtr/hooks"
+  local local_hooks_dir="$main_worktree/.gtr/hooks"
+  local worktree_hooks_dir="$worktree_path/.gtr/hooks"
+  
+  # Determine which hooks directory to use as source
+  local source_hooks_dir=""
+  if [[ -d "$local_hooks_dir" ]]; then
+    source_hooks_dir="$local_hooks_dir"
+  elif [[ -d "$global_hooks_dir" ]]; then
+    source_hooks_dir="$global_hooks_dir"
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    return 0  # No hooks to copy
+  fi
+  
+  # Create hooks directory in worktree
+  if [[ ! -d "$worktree_hooks_dir" ]]; then
+    mkdir -p "$worktree_hooks_dir"
+  fi
+  
+  # Copy each hook
+  local copied_hooks=()
+  for hook_file in "$source_hooks_dir"/*; do
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file")"
+      local worktree_hook="$worktree_hooks_dir/$hook_name"
+      
+      if cp "$hook_file" "$worktree_hook" 2>/dev/null; then
+        chmod +x "$worktree_hook" 2>/dev/null
+        copied_hooks+=("$hook_name")
+      fi
+    fi
+  done
+  
+  if [[ ${#copied_hooks[@]} -gt 0 ]]; then
+    echo "  📋 Copied hooks:"
+    for hook in "${copied_hooks[@]}"; do
+      echo "    - $hook"
+    done
+  fi
 }

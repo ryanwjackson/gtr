@@ -140,6 +140,12 @@ _gtr_create_worktree() {
     fi
   fi
 
+  # Execute pre-create hook
+  if ! _gtr_execute_pre_create_hook "$name" "$base/$name" "$branch_name" "$base_branch" "$main_worktree"; then
+    echo "❌ Pre-create hook failed, aborting worktree creation"
+    return 1
+  fi
+
   # Create worktree and branch from the specified base
   if git worktree add "$base/$name" -b "$branch_name" "$base_branch"; then
     echo "✅ Created worktree '$name' based on $base_branch"
@@ -177,6 +183,9 @@ _gtr_create_worktree() {
 
     # Run pnpm commands if not disabled
     _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
+
+    # Execute post-create hook
+    _gtr_execute_post_create_hook "$name" "$base/$name" "$branch_name" "$base_branch" "$main_worktree"
 
     if [[ "$_GTR_NO_OPEN" == "false" ]]; then
       echo "Opening '$base/$name' with $_GTR_EDITOR"
@@ -320,6 +329,15 @@ _gtr_remove_worktree() {
       need_to_cd_back=true
     fi
 
+    # Execute pre-remove hook
+    if ! _gtr_execute_pre_remove_hook "$name" "$worktree_path" "$worktree_branch" "$force" "$dry_run" "$main_worktree"; then
+      echo "❌ Pre-remove hook failed, aborting worktree removal"
+      if [[ "$need_to_cd_back" == "true" ]]; then
+        cd "$current_dir" || echo "⚠️  Could not change back to original directory"
+      fi
+      return 1
+    fi
+
     # Remove the worktree
     if git worktree remove "$worktree_path"; then
       echo "Removed worktree '$name'"
@@ -361,6 +379,9 @@ _gtr_remove_worktree() {
         fi
       fi
 
+      # Execute post-remove hook
+      _gtr_execute_post_remove_hook "$name" "$worktree_path" "$worktree_branch" "$force" "$dry_run" "$main_worktree"
+
       # If we changed directories, we can't go back to the original worktree since it's deleted
       if [[ "$need_to_cd_back" == "true" ]]; then
         echo "✅ Worktree removed successfully. You're now in the main repository."
@@ -385,6 +406,12 @@ _gtr_prune_worktrees() {
   local main_worktree="$(_gtr_get_main_worktree)"
 
   echo "🧹 Cleaning up merged worktrees (base: $base_branch)..."
+
+  # Execute pre-prune hook
+  if ! _gtr_execute_pre_prune_hook "$base_branch" "$dry_run" "$force" "$main_worktree"; then
+    echo "❌ Pre-prune hook failed, aborting prune operation"
+    return 1
+  fi
 
   # Parse worktrees using a more robust approach
   local -a worktree_paths
@@ -470,6 +497,9 @@ _gtr_prune_worktrees() {
       echo "✅ Keeping: $worktree_path ($branch_name) - not merged"
     fi
   done
+
+  # Execute post-prune hook
+  _gtr_execute_post_prune_hook "$base_branch" "$dry_run" "$force" "$main_worktree"
 
   if [[ "$dry_run" == "true" ]]; then
     echo "🔍 Dry run complete! Use without --dry-run to actually remove worktrees."

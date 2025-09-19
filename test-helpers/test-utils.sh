@@ -215,6 +215,80 @@ assert_file_not_exists() {
   fi
 }
 
+assert_executable() {
+  local file="$1"
+  local message="${2:-File should be executable}"
+
+  if [[ -f "$file" && -x "$file" ]]; then
+    return 0
+  else
+    echo "ASSERTION FAILED: $message"
+    echo "  File: '$file'"
+    return 1
+  fi
+}
+
+assert_directory_exists() {
+  local dir="$1"
+  local message="${2:-Directory should exist}"
+
+  if [[ -d "$dir" ]]; then
+    return 0
+  else
+    echo "ASSERTION FAILED: $message"
+    echo "  Directory: '$dir'"
+    return 1
+  fi
+}
+
+assert_directory_not_exists() {
+  local dir="$1"
+  local message="${2:-Directory should not exist}"
+
+  if [[ ! -d "$dir" ]]; then
+    return 0
+  else
+    echo "ASSERTION FAILED: $message"
+    echo "  Directory: '$dir'"
+    return 1
+  fi
+}
+
+assert_file_different() {
+  local file1="$1"
+  local file2="$2"
+  local message="${3:-Files should be different}"
+
+  if [[ -f "$file1" && -f "$file2" ]]; then
+    if ! diff -q "$file1" "$file2" >/dev/null 2>&1; then
+      return 0
+    else
+      echo "ASSERTION FAILED: $message"
+      echo "  File1: '$file1'"
+      echo "  File2: '$file2'"
+      return 1
+    fi
+  else
+    echo "ASSERTION FAILED: $message"
+    echo "  File1: '$file1' (exists: $([[ -f "$file1" ]] && echo "yes" || echo "no"))"
+    echo "  File2: '$file2' (exists: $([[ -f "$file2" ]] && echo "yes" || echo "no"))"
+    return 1
+  fi
+}
+
+assert_not_empty() {
+  local value="$1"
+  local message="${2:-Value should not be empty}"
+
+  if [[ -n "$value" ]]; then
+    return 0
+  else
+    echo "ASSERTION FAILED: $message"
+    echo "  Value: '$value'"
+    return 1
+  fi
+}
+
 assert_dir_exists() {
   local dir="$1"
   local message="${2:-Directory should exist}"

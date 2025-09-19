@@ -24,7 +24,8 @@ source_module "gtr-core.sh"     # Core utilities and constants
 source_module "gtr-ui.sh"       # User interaction
 source_module "gtr-config.sh"   # Configuration management (depends on gtr-ui.sh)
 source_module "gtr-files.sh"    # File operations (depends on gtr-config.sh, gtr-ui.sh)
-source_module "gtr-git.sh"      # Git operations (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh)
+source_module "gtr-hooks.sh"    # Hook execution (depends on gtr-core.sh)
+source_module "gtr-git.sh"      # Git operations (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh, gtr-hooks.sh)
 source_module "gtr-commands.sh" # Command implementations (depends on all above)
 
 # Main gtr function - dispatches to appropriate sub-commands

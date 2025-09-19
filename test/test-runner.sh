@@ -84,6 +84,8 @@ run_all_tests() {
   run_test_suite "$SCRIPT_DIR/test-core.sh" "Core Functions"
   run_test_suite "$SCRIPT_DIR/test-config.sh" "Configuration Management"
   run_test_suite "$SCRIPT_DIR/test-files.sh" "File Operations"
+  run_test_suite "$SCRIPT_DIR/test-hooks.sh" "Hook Execution"
+  run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
   run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
 
   # Show final summary
@@ -104,12 +106,18 @@ run_specific_test() {
     files)
       run_test_suite "$SCRIPT_DIR/test-files.sh" "File Operations"
       ;;
+    hooks)
+      run_test_suite "$SCRIPT_DIR/test-hooks.sh" "Hook Execution"
+      ;;
+    init)
+      run_test_suite "$SCRIPT_DIR/test-init.sh" "Init Command"
+      ;;
     ideas)
       run_test_suite "$SCRIPT_DIR/test-ideas.sh" "Idea Management"
       ;;
     *)
       echo -e "${RED}Unknown test: $test_name${NC}"
-      echo "Available tests: core, config, files, ideas"
+      echo "Available tests: core, config, files, hooks, init, ideas"
       return 1
       ;;
   esac
@@ -121,6 +129,8 @@ list_tests() {
   echo "  core    - Core functions and utilities"
   echo "  config  - Configuration management"
   echo "  files   - File operations and copying"
+  echo "  hooks   - Hook execution and management"
+  echo "  init    - Init command functionality"
   echo "  ideas   - Idea management functionality"
   echo ""
   echo "Usage:"

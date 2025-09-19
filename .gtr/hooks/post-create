@@ -85,10 +85,21 @@ if [[ "$run_pnpm" == "true" && -f "$WORKTREE_PATH/package.json" ]]; then
 
     if command -v pnpm >/dev/null 2>&1; then
         echo "  Running pnpm approve-builds..."
-        (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+        # Ensure stdin is available for interactive prompts
+        if [[ -t 0 ]]; then
+            # Running interactively - allow user input
+            (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+        else
+            # Running non-interactively - auto-approve all builds
+            echo "  (Non-interactive mode: auto-approving all builds)"
+            (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds) || echo "  ⚠️  pnpm install failed"
+        fi
 
-        echo "  Running pnpm install..."
-        (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
+        # Only run install if we didn't already run it with --dangerously-allow-all-builds
+        if [[ -t 0 ]]; then
+            echo "  Running pnpm install..."
+            (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
+        fi
     else
         echo "  ⚠️  pnpm not found, skipping pnpm commands"
     fi

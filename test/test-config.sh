@@ -108,7 +108,7 @@ test_config_validation() {
   # Test empty config file
   touch "$config_dir/config"
   local patterns=($(_gtr_read_config "$TEST_TEMP_DIR"))
-  assert_equals "3" "${#patterns[@]}" "Empty config should fall back to defaults"
+  assert_equals "4" "${#patterns[@]}" "Empty config should fall back to defaults"
 
   # Test config with comments only
   cat > "$config_dir/config" << 'EOF'
@@ -118,7 +118,7 @@ test_config_validation() {
 # Just comments in this section
 EOF
   patterns=($(_gtr_read_config "$TEST_TEMP_DIR"))
-  assert_equals "3" "${#patterns[@]}" "Config with only comments should fall back to defaults"
+  assert_equals "4" "${#patterns[@]}" "Config with only comments should fall back to defaults"
 }
 
 # Test global vs local config precedence

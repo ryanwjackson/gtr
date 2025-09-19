@@ -1,21 +1,28 @@
 # gtr configuration file
-# This file defines gtr behavior for worktree management
-#
-# File copying is now handled by the post-create hook.
-# To customize which files are copied to new worktrees:
-# 1. Copy: cp .gtr/hooks/post-create.sample .gtr/hooks/post-create
-# 2. Make executable: chmod +x .gtr/hooks/post-create
-# 3. Edit the FILE_PATTERNS array in the post-create hook
+# This file defines gtr behavior and which files should be copied to worktrees
+
+[files_to_copy]
+# File patterns to copy (glob patterns, one per line)
+# Default patterns for local environment files
+.env*local*
+.env.*local*
+
+# Claude settings directories
+.claude/
+.anthropic/
+
+# Add more patterns as needed
+# Example:
+# config/local.json
+# secrets/*.local
 
 [settings]
 # Default editor to open worktrees
 editor=cursor
 
-# Default branch prefix for worktrees
-prefix=claude
 
-# Whether to run pnpm commands by default (moved to post-create hook)
-# run_pnpm=true
+# Whether to run pnpm commands by default
+run_pnpm=true
 
 # Whether to open editor after creating worktree
 auto_open=true

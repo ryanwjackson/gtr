@@ -65,7 +65,7 @@ _gtr_read_config() {
 
   # Fallback to default patterns if none found
   if [[ ${#patterns[@]} -eq 0 ]]; then
-    patterns=(".env*local*" ".claude/" ".anthropic/")
+    patterns=(".env*local*" ".claude/" ".anthropic/" ".gtr/hooks/")
   fi
 
   echo "${patterns[@]}"
@@ -212,6 +212,9 @@ _gtr_generate_default_config() {
 .claude/
 .anthropic/
 
+# gtr hooks directory
+.gtr/hooks/
+
 # Add more patterns as needed
 # Example:
 # config/local.json
@@ -293,6 +296,9 @@ _gtr_repair_config() {
       echo "# Claude settings directories"
       echo ".claude/"
       echo ".anthropic/"
+      echo ""
+      echo "# gtr hooks directory"
+      echo ".gtr/hooks/"
     fi
     echo ""
     echo "[settings]"
@@ -325,6 +331,10 @@ _gtr_init_global_config() {
   # Create global config file
   _gtr_create_default_config "$global_config_file"
   echo "📝 Created global configuration file at $global_config_file"
+  
+  # Copy hooks to global config
+  _gtr_copy_hooks_to_global "$global_config_dir"
+  
   echo "✅ Global gtr configuration initialized!"
 }
 
@@ -387,6 +397,11 @@ _gtr_init_config_with_options() {
   else
     _gtr_create_default_config "$config_file"
     echo "📝 Created default $config_type configuration file"
+  fi
+
+  # Copy hooks if this is a global config initialization
+  if [[ "$config_type" == "global" ]]; then
+    _gtr_copy_hooks_to_global "$config_dir"
   fi
 
   echo "✅ $config_type gtr configuration initialized successfully!"
@@ -455,6 +470,9 @@ _gtr_init_config() {
     echo "📝 Created default configuration file"
   fi
 
+  # Copy hooks if this is a local config initialization
+  _gtr_copy_hooks_to_local "$main_worktree" "$config_dir"
+
   echo "✅ gtr configuration initialized successfully!"
   echo "   Config file: $config_file"
   echo "   Edit this file to customize gtr behavior"
@@ -475,6 +493,9 @@ _gtr_create_default_config() {
 # Claude settings directories
 .claude/
 .anthropic/
+
+# gtr hooks directory
+.gtr/hooks/
 
 # Add more patterns as needed
 # Example:
@@ -705,5 +726,186 @@ _gtr_init_doctor() {
     fi
   else
     echo "✅ All local files are covered by the configuration"
+  fi
+}
+
+_gtr_copy_hooks_to_global() {
+  local global_config_dir="$1"
+  local hooks_dir="$global_config_dir/hooks"
+  local source_hooks_dir=""
+  
+  # Find the source hooks directory (from the gtr installation)
+  # Try to find it relative to the current script location
+  local script_dir=""
+  if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+  else
+    # Fallback: try to find it from the current working directory
+    script_dir="$(pwd)"
+  fi
+  
+  # Look for hooks in common locations
+  # First try relative to script location
+  for potential_dir in "$script_dir/../dot_gtr/hooks" "$script_dir/../../dot_gtr/hooks" "$(dirname "$script_dir")/dot_gtr/hooks"; do
+    if [[ -d "$potential_dir" ]]; then
+      source_hooks_dir="$potential_dir"
+      break
+    fi
+  done
+  
+  # If not found, try to find gtr installation directory
+  if [[ -z "$source_hooks_dir" ]]; then
+    local gtr_script=""
+    if command -v gtr >/dev/null 2>&1; then
+      gtr_script="$(which gtr)"
+      if [[ -L "$gtr_script" ]]; then
+        gtr_script="$(readlink "$gtr_script")"
+      fi
+      local gtr_dir="$(dirname "$gtr_script")"
+      for potential_dir in "$gtr_dir/../dot_gtr/hooks" "$gtr_dir/../../dot_gtr/hooks" "$(dirname "$gtr_dir")/dot_gtr/hooks"; do
+        if [[ -d "$potential_dir" ]]; then
+          source_hooks_dir="$potential_dir"
+          break
+        fi
+      done
+    fi
+  fi
+  
+  # Final fallback: look in current directory and common development locations
+  if [[ -z "$source_hooks_dir" ]]; then
+    for potential_dir in "$(pwd)/dot_gtr/hooks" "/Users/ryanwjackson/Documents/dev/worktrees/init-hooks/dot_gtr/hooks"; do
+      if [[ -d "$potential_dir" ]]; then
+        source_hooks_dir="$potential_dir"
+        break
+      fi
+    done
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    echo "⚠️  Could not find source hooks directory, skipping hooks setup"
+    return 0
+  fi
+  
+  # Create hooks directory in global config
+  if [[ ! -d "$hooks_dir" ]]; then
+    mkdir -p "$hooks_dir"
+    echo "📁 Created hooks directory: $hooks_dir"
+  fi
+  
+  # Copy sample hooks
+  local copied_hooks=()
+  for hook_file in "$source_hooks_dir"/*.sample; do
+    if [[ -f "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file" .sample)"
+      local target_file="$hooks_dir/$hook_name"
+      
+      if [[ ! -f "$target_file" ]]; then
+        if cp "$hook_file" "$target_file" 2>/dev/null; then
+          chmod +x "$target_file" 2>/dev/null
+          copied_hooks+=("$hook_name")
+        fi
+      fi
+    fi
+  done
+  
+  if [[ ${#copied_hooks[@]} -gt 0 ]]; then
+    echo "🔧 Copied hooks to global config:"
+    for hook in "${copied_hooks[@]}"; do
+      echo "  - $hook"
+    done
+    echo "   Edit hooks in: $hooks_dir"
+  else
+    echo "📋 Hooks already exist in global config"
+  fi
+}
+
+_gtr_copy_hooks_to_local() {
+  local main_worktree="$1"
+  local config_dir="$2"
+  local hooks_dir="$config_dir/hooks"
+  local source_hooks_dir=""
+  
+  # Find the source hooks directory (from the gtr installation)
+  # Try to find it relative to the current script location
+  local script_dir=""
+  if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+  else
+    # Fallback: try to find it from the current working directory
+    script_dir="$(pwd)"
+  fi
+  
+  # Look for hooks in common locations
+  # First try relative to script location
+  for potential_dir in "$script_dir/../dot_gtr/hooks" "$script_dir/../../dot_gtr/hooks" "$(dirname "$script_dir")/dot_gtr/hooks"; do
+    if [[ -d "$potential_dir" ]]; then
+      source_hooks_dir="$potential_dir"
+      break
+    fi
+  done
+  
+  # If not found, try to find gtr installation directory
+  if [[ -z "$source_hooks_dir" ]]; then
+    local gtr_script=""
+    if command -v gtr >/dev/null 2>&1; then
+      gtr_script="$(which gtr)"
+      if [[ -L "$gtr_script" ]]; then
+        gtr_script="$(readlink "$gtr_script")"
+      fi
+      local gtr_dir="$(dirname "$gtr_script")"
+      for potential_dir in "$gtr_dir/../dot_gtr/hooks" "$gtr_dir/../../dot_gtr/hooks" "$(dirname "$gtr_dir")/dot_gtr/hooks"; do
+        if [[ -d "$potential_dir" ]]; then
+          source_hooks_dir="$potential_dir"
+          break
+        fi
+      done
+    fi
+  fi
+  
+  # Final fallback: look in current directory and common development locations
+  if [[ -z "$source_hooks_dir" ]]; then
+    for potential_dir in "$(pwd)/dot_gtr/hooks" "/Users/ryanwjackson/Documents/dev/worktrees/init-hooks/dot_gtr/hooks"; do
+      if [[ -d "$potential_dir" ]]; then
+        source_hooks_dir="$potential_dir"
+        break
+      fi
+    done
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    echo "⚠️  Could not find source hooks directory, skipping hooks setup"
+    return 0
+  fi
+  
+  # Create hooks directory in local config
+  if [[ ! -d "$hooks_dir" ]]; then
+    mkdir -p "$hooks_dir"
+    echo "📁 Created hooks directory: $hooks_dir"
+  fi
+  
+  # Copy sample hooks
+  local copied_hooks=()
+  for hook_file in "$source_hooks_dir"/*.sample; do
+    if [[ -f "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file" .sample)"
+      local target_file="$hooks_dir/$hook_name"
+      
+      if [[ ! -f "$target_file" ]]; then
+        if cp "$hook_file" "$target_file" 2>/dev/null; then
+          chmod +x "$target_file" 2>/dev/null
+          copied_hooks+=("$hook_name")
+        fi
+      fi
+    fi
+  done
+  
+  if [[ ${#copied_hooks[@]} -gt 0 ]]; then
+    echo "🔧 Copied hooks to local config:"
+    for hook in "${copied_hooks[@]}"; do
+      echo "  - $hook"
+    done
+    echo "   Edit hooks in: $hooks_dir"
+  else
+    echo "📋 Hooks already exist in local config"
   fi
 }
