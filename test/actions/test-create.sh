@@ -17,12 +17,15 @@ source "$SCRIPT_DIR/../../lib/gtr-hooks.sh"
 
 # Test create command basic functionality
 test_gtr_create_basic() {
-  # Test basic create without worktree functionality (just validation)
+  # Test basic create functionality with dry-run (safe for test environment)
   local result
-  result=$(echo "test-worktree" | run_gtr_test create --no-open 2>&1) || true
+  local exit_code
+  result=$(run_gtr_test create test-worktree --no-open --dry-run 2>&1)
+  exit_code=$?
 
-  # Should contain some expected output (exact behavior depends on implementation)
-  assert_contains "$result" "test-worktree" "Create command should process the worktree name"
+  # Command should execute successfully and show dry-run output
+  assert_equals "0" "$exit_code" "Create command should execute without errors in dry-run"
+  assert_contains "$result" "DRY RUN" "Dry run should indicate it's a simulation"
 }
 
 # Test create command validation
@@ -47,19 +50,22 @@ test_gtr_create_help() {
 
 # Test create command with options
 test_gtr_create_with_options() {
-  # Test that options are parsed (even if not fully functional in test env)
+  # Test that options are parsed with dry-run (safe for test environment)
   local result
-  result=$(echo "test-branch" | run_gtr_test create --no-open --no-install 2>&1) || true
+  local exit_code
+  result=$(run_gtr_test create test-branch --no-open --no-install --dry-run 2>&1)
+  exit_code=$?
 
-  # Should not crash and should process the options
-  assert_not_empty "$result" "Create with options should produce output"
+  # Should execute successfully with options in dry-run mode
+  assert_equals "0" "$exit_code" "Create with options should execute successfully in dry-run"
+  assert_contains "$result" "DRY RUN" "Dry run should indicate it's a simulation"
 }
 
 # Test create command dry run (if implemented)
 test_gtr_create_dry_run() {
   # Test dry run functionality if available
   local result
-  result=$(echo "test-dry-run" | run_gtr_test create --no-open --dry-run 2>&1) || true
+  result=$(run_gtr_test create test-dry-run --no-open --dry-run 2>&1) || true
 
   # Should indicate what would be done without doing it
   assert_not_empty "$result" "Dry run should produce output"

@@ -23,22 +23,20 @@ jobs:
     - name: Setup Scripts
       run: |
         # Set proper executable permissions
-        chmod +x bin/gtr bin/gtr-new test/test-runner.sh test/*.sh
+        chmod +x bin/gtr bin/pr test/test-runner.sh test/*.sh
         # Verify permissions were set correctly
         echo "Verifying script permissions..."
-        ls -la bin/gtr bin/gtr-new test/test-runner.sh
+        ls -la bin/gtr bin/pr test/test-runner.sh
         echo "Script permissions set successfully"
 
     - name: Run Tests
       run: ./test/test-runner.sh
 
-    - name: Verify Both Scripts Work
+    - name: Verify Script Works
       run: |
-        echo "Testing original script..."
-        ./bin/gtr --version
         echo "Testing modular script..."
-        ./bin/gtr-new --version
-        echo "Both scripts functional ✓"
+        ./bin/gtr --version
+        echo "Script functional ✓"
 
   lint:
     name: Shell Linting
@@ -56,7 +54,7 @@ jobs:
     - name: Lint Shell Scripts
       run: |
         echo "Linting main scripts..."
-        shellcheck bin/gtr bin/gtr-new || true
+        shellcheck bin/gtr || true
         echo "Linting library modules..."
         shellcheck lib/*.sh || true
         echo "Linting test scripts..."

@@ -45,17 +45,14 @@ bash test/actions/test-create.sh
 ### Development Testing
 ```bash
 # Test the modular version (ALWAYS use for development - tests current changes)
-./bin/gtr-new --version
-./bin/gtr-new --help
-./bin/gtr-new create test-branch --no-open
+./bin/gtr --version
+./bin/gtr --help
+./bin/gtr create test-branch --no-open
 
 # Test dry-run functionality
-./bin/gtr-new create feature-test --dry-run
-./bin/gtr-new remove feature-test --dry-run
-./bin/gtr-new prune --dry-run
-
-# Test the legacy version (compatibility check with current repository)
-./bin/gtr --version
+./bin/gtr create feature-test --dry-run
+./bin/gtr remove feature-test --dry-run
+./bin/gtr prune --dry-run
 
 # Compare with installed Homebrew version (only when comparing behavior)
 gtr --version  # This uses the system-installed version via brew
@@ -74,16 +71,14 @@ bin/release 0.1.2 -m "Custom release message"
 ### Important: Development vs Production Versions
 
 - **Production/Installed**: `gtr` command (installed via Homebrew) - Only use for comparing behavior with released version
-- **Development**: `./bin/gtr-new` (3.3KB modular entry point) - **ALWAYS use this for testing current changes**
-- **Legacy/Compatibility**: `./bin/gtr` (80KB monolithic script) - Use for compatibility verification
+- **Development**: `./bin/gtr` (modular entry point) - **ALWAYS use this for testing current changes**
 
-**Critical**: When developing, always use `./bin/gtr-new` to test your changes. The `gtr` command uses the system-installed version and won't reflect your modifications.
+**Critical**: When developing, always use `./bin/gtr` to test your changes. The `gtr` command uses the system-installed version and won't reflect your modifications.
 
 ### Modular Design
-The project uses a dual-architecture approach:
+The project uses a modular architecture:
 
-- **Legacy**: `bin/gtr` (80KB monolithic script, 2300+ lines)
-- **Modular**: `bin/gtr-new` (3.3KB entry point) + `lib/` modules
+- **Modular**: `bin/gtr` (entry point) + `lib/` modules
 
 ### Module Structure (lib/)
 Modules must be sourced in exact dependency order:
@@ -107,10 +102,10 @@ Modules must be sourced in exact dependency order:
 
 ### Critical Development Rules
 
-1. **Use Development Version**: **ALWAYS use `./bin/gtr-new` for testing changes** - the `gtr` command is the Homebrew-installed version and won't reflect your modifications
-2. **Module-First Development**: Add functionality to appropriate modules in `lib/`, never modify `bin/gtr` directly
+1. **Use Development Version**: **ALWAYS use `./bin/gtr` for testing changes** - the `gtr` command is the Homebrew-installed version and won't reflect your modifications
+2. **Module-First Development**: Add functionality to appropriate modules in `lib/`, modify `bin/gtr` only for entry point changes
 3. **Testing Required**: Always run `./test/test-runner.sh` before and after changes
-4. **Compatibility Promise**: Both `bin/gtr` and `bin/gtr-new` must work identically
+4. **Modular Architecture**: The `bin/gtr` script now uses modular design with `lib/` modules
 5. **Dependency Order**: Never break module sourcing order or introduce circular dependencies
 
 ### Function Naming Conventions
@@ -164,11 +159,10 @@ test/
 3. Identify target module(s) for changes
 4. Write/update tests first
 5. Implement changes maintaining module boundaries
-6. Test with `./bin/gtr-new` (development version) - **never use `gtr` for testing your changes**
-7. Verify both `./bin/gtr-new` and `./bin/gtr` work identically for compatibility
-8. Run full test suite again
+6. Test with `./bin/gtr` (development version) - **never use `gtr` for testing your changes**
+7. Run full test suite again
 
-**Remember**: The `gtr` command is installed via Homebrew and reflects the released version, not your development changes. Always use `./bin/gtr-new` during development.
+**Remember**: The `gtr` command is installed via Homebrew and reflects the released version, not your development changes. Always use `./bin/gtr` during development.
 
 ## Configuration
 
