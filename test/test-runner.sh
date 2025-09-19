@@ -61,7 +61,11 @@ show_final_summary() {
   echo -e "Test Suites:"
   echo -e "  Total:  $TOTAL_SUITES"
   echo -e "  Passed: ${GREEN}$PASSED_SUITES${NC}"
-  echo -e "  Failed: ${RED}$FAILED_SUITES${NC}"
+  if [[ $FAILED_SUITES -eq 0 ]]; then
+    echo -e "  Failed: ${GREEN}$FAILED_SUITES${NC}"
+  else
+    echo -e "  Failed: ${RED}$FAILED_SUITES${NC}"
+  fi
   echo ""
 
   if [[ $FAILED_SUITES -eq 0 ]]; then

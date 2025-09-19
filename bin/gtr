@@ -24,6 +24,7 @@ source "$SCRIPT_DIR/../lib/gtr-core.sh"     # Core utilities and constants
 source "$SCRIPT_DIR/../lib/gtr-ui.sh"       # User interaction
 source "$SCRIPT_DIR/../lib/gtr-config.sh"   # Configuration management
 source "$SCRIPT_DIR/../lib/gtr-files.sh"    # File operations
+source "$SCRIPT_DIR/../lib/gtr-hooks.sh"    # Hook execution
 source "$SCRIPT_DIR/../lib/gtr-git.sh"      # Git operations
 source "$SCRIPT_DIR/../lib/gtr-commands.sh" # Command implementations
 source "$SCRIPT_DIR/../lib/gtr-ideas.sh"    # Idea management
@@ -1051,210 +1052,210 @@ _gtr_create_worktree() {
   fi
 }
 
-_gtr_remove_worktree() {
-  local name="$1"
-  local force="$2"
-  local dry_run="$3"
-  local base="$(_gtr_get_base_dir)"
-  local branch_name="$(_gtr_get_worktree_branch_name "$name")"
-  local worktree_path=""
-  local worktree_branch=""
-  
-  # First, try to find the worktree by directory name
-  if [[ -d "$base/$name" ]]; then
-    worktree_path="$base/$name"
-    # Get the actual branch the worktree is on
-    worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $worktree_path" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
-  else
-    # Try to find worktree by branch name if directory not found
-    worktree_branch="$name"
-    worktree_path=$(git worktree list --porcelain | awk -v branch="$worktree_branch" '
-      /^worktree / { 
-        worktree_path = $2
-      }
-      /^branch refs\/heads\// { 
-        current_branch = substr($0, 19)
-        if (current_branch == branch) {
-          print worktree_path
-          exit
-        }
-      }
-    ')
-    
-    if [[ -z "$worktree_path" ]]; then
-      echo "❌ Worktree not found: $name"
-      echo "💡 Available worktrees:"
-      git worktree list
-      return 1
-    fi
-  fi
-  
-  # Try alternative method if the first one didn't work
-  if [[ -z "$worktree_branch" ]]; then
-    worktree_branch=$(git worktree list --porcelain | awk -v worktree="$worktree_path" '
-      /^worktree/ { 
-        if ($0 ~ worktree) { 
-          found=1; next 
-        } else { 
-          found=0; next 
-        }
-      }
-      found && /^branch refs\/heads\// { 
-        gsub(/^branch refs\/heads\//, ""); 
-        print; 
-        exit 
-      }
-    ')
-  fi
-  
-  # Determine which branch to check for deletion
-  local branch_to_check=""
-  local is_fallback=false
-  if git show-ref --verify --quiet "refs/heads/$branch_name"; then
-    branch_to_check="$branch_name"
-  else
-    if [[ -n "$worktree_branch" ]] && git show-ref --verify --quiet "refs/heads/$worktree_branch"; then
-      branch_to_check="$worktree_branch"
-      is_fallback=true
-      echo "Expected branch '$branch_name' not found, but worktree was on branch '$worktree_branch'"
-    fi
-  fi
-  
-  if [[ "$dry_run" == "true" ]]; then
-    echo "🔍 [DRY RUN] Would remove worktree: $worktree_path"
-    if [[ -n "$branch_to_check" ]]; then
-      # Safeguard: Never delete main/master branches
-      if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
-        echo "🔍 [DRY RUN] Would skip deletion of main branch '$branch_to_check'"
-      else
-        # Check if branch has uncommitted changes
-        if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
-          echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has changes)"
-        else
-          # Check if branch is ahead/behind or has different commits
-          local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
-          if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
-            echo "🔍 [DRY RUN] Would delete branch: $branch_to_check"
-          else
-            echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has diverged)"
-          fi
-        fi
-      fi
-    fi
-  else
-    # Check if we can safely delete the branch BEFORE removing the worktree
-    local can_delete_branch=false
-    local branch_deletion_reason=""
-    
-    if [[ -n "$branch_to_check" ]]; then
-      # Safeguard: Never delete main/master branches
-      if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
-        branch_deletion_reason="main branch"
-      else
-        # Check if branch has uncommitted changes
-        if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
-          branch_deletion_reason="has changes"
-        else
-          # Check if branch is ahead/behind or has different commits
-          local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
-          if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
-            can_delete_branch=true
-          else
-            branch_deletion_reason="has diverged"
-          fi
-        fi
-      fi
-    fi
-    
-    # Check if we're currently in the worktree being removed
-    local current_dir="$(pwd)"
-    local main_worktree="$(_gtr_get_main_worktree)"
-    local need_to_cd_back=false
-    
-    if [[ "$current_dir" == "$worktree_path" ]]; then
-      echo "🔄 Currently in worktree being removed, changing to main repository..."
-      cd "$main_worktree" || {
-        echo "❌ Failed to change to main repository directory"
-        return 1
-      }
-      need_to_cd_back=true
-    fi
-    
-    # Only remove the worktree if we can delete the branch OR force is used
-    if [[ "$can_delete_branch" == "true" || "$force" == "true" ]]; then
-      # Remove the worktree
-      if git worktree remove "$worktree_path"; then
-        echo "Removed worktree '$name'"
-
-        # Now handle branch deletion based on our earlier checks
-        if [[ -n "$branch_to_check" ]]; then
-          if [[ "$can_delete_branch" == "true" ]]; then
-            # Always ask for confirmation if this is a fallback branch, even with --force
-            if [[ "$is_fallback" == "true" ]]; then
-              printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
-              read -r reply
-              case "$reply" in
-                [yY]|[yY][eE][sS])
-                  echo "Deleting branch '$branch_to_check'"
-                  git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
-                  ;;
-                *)
-                  echo "Skipped deleting branch '$branch_to_check'"
-                  ;;
-              esac
-            elif [[ "$force" == "true" ]]; then
-              echo "Deleting branch '$branch_to_check' (no changes)"
-              git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
-            else
-              printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
-              read -r reply
-              case "$reply" in
-                [yY]|[yY][eE][sS])
-                  echo "Deleting branch '$branch_to_check'"
-                  git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
-                  ;;
-                *)
-                  echo "Skipped deleting branch '$branch_to_check'"
-                  ;;
-              esac
-            fi
-          else
-            echo "Branch '$branch_to_check' $branch_deletion_reason. Not deleting."
-          fi
-        fi
-
-        # If we changed directories, we can't go back to the original worktree since it's deleted
-        if [[ "$need_to_cd_back" == "true" ]]; then
-          echo "✅ Worktree removed successfully. You're now in the main repository."
-        fi
-      else
-        echo "Failed to remove worktree '$name'"
-
-        # If we changed directories and removal failed, change back to original directory
-        if [[ "$need_to_cd_back" == "true" ]]; then
-          echo "🔄 Changing back to original worktree directory..."
-          cd "$current_dir" || echo "⚠️  Could not change back to original directory"
-        fi
-      fi
-    else
-      # Worktree removal blocked because branch can't be safely deleted
-      if [[ -n "$branch_to_check" ]]; then
-        echo "❌ Cannot remove worktree '$name'"
-        echo "   Branch '$branch_to_check' $branch_deletion_reason."
-        echo "   Use --force to remove anyway."
-      else
-        echo "❌ Cannot remove worktree '$name' (no associated branch found)"
-        echo "   Use --force to remove anyway."
-      fi
-
-      # If we changed directories, change back to original directory
-      if [[ "$need_to_cd_back" == "true" ]]; then
-        echo "🔄 Changing back to original worktree directory..."
-        cd "$current_dir" || echo "⚠️  Could not change back to original directory"
-      fi
-    fi
-  fi
-}
+# _gtr_remove_worktree() {
+#   local name="$1"
+#   local force="$2"
+#   local dry_run="$3"
+#   local base="$(_gtr_get_base_dir)"
+#   local branch_name="$(_gtr_get_worktree_branch_name "$name")"
+#   local worktree_path=""
+#   local worktree_branch=""
+#   
+#   # First, try to find the worktree by directory name
+#   if [[ -d "$base/$name" ]]; then
+#     worktree_path="$base/$name"
+#     # Get the actual branch the worktree is on
+#     worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $worktree_path" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
+#   else
+#     # Try to find worktree by branch name if directory not found
+#     worktree_branch="$name"
+#     worktree_path=$(git worktree list --porcelain | awk -v branch="$worktree_branch" '
+#       /^worktree / { 
+#         worktree_path = $2
+#       }
+#       /^branch refs\/heads\// { 
+#         current_branch = substr($0, 19)
+#         if (current_branch == branch) {
+#           print worktree_path
+#           exit
+#         }
+#       }
+#     ')
+#     
+#     if [[ -z "$worktree_path" ]]; then
+#       echo "❌ Worktree not found: $name"
+#       echo "💡 Available worktrees:"
+#       git worktree list
+#       return 1
+#     fi
+#   fi
+#   
+#   # Try alternative method if the first one didn't work
+#   if [[ -z "$worktree_branch" ]]; then
+#     worktree_branch=$(git worktree list --porcelain | awk -v worktree="$worktree_path" '
+#       /^worktree/ { 
+#         if ($0 ~ worktree) { 
+#           found=1; next 
+#         } else { 
+#           found=0; next 
+#         }
+#       }
+#       found && /^branch refs\/heads\// { 
+#         gsub(/^branch refs\/heads\//, ""); 
+#         print; 
+#         exit 
+#       }
+#     ')
+#   fi
+#   
+#   # Determine which branch to check for deletion
+#   local branch_to_check=""
+#   local is_fallback=false
+#   if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+#     branch_to_check="$branch_name"
+#   else
+#     if [[ -n "$worktree_branch" ]] && git show-ref --verify --quiet "refs/heads/$worktree_branch"; then
+#       branch_to_check="$worktree_branch"
+#       is_fallback=true
+#       echo "Expected branch '$branch_name' not found, but worktree was on branch '$worktree_branch'"
+#     fi
+#   fi
+#   
+#   if [[ "$dry_run" == "true" ]]; then
+#     echo "🔍 [DRY RUN] Would remove worktree: $worktree_path"
+#     if [[ -n "$branch_to_check" ]]; then
+#       # Safeguard: Never delete main/master branches
+#       if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
+#         echo "🔍 [DRY RUN] Would skip deletion of main branch '$branch_to_check'"
+#       else
+#         # Check if branch has uncommitted changes
+#         if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+#           echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has changes)"
+#         else
+#           # Check if branch is ahead/behind or has different commits
+#           local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
+#           if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
+#             echo "🔍 [DRY RUN] Would delete branch: $branch_to_check"
+#           else
+#             echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has diverged)"
+#           fi
+#         fi
+#       fi
+#     fi
+#   else
+#     # Check if we can safely delete the branch BEFORE removing the worktree
+#     local can_delete_branch=false
+#     local branch_deletion_reason=""
+#     
+#     if [[ -n "$branch_to_check" ]]; then
+#       # Safeguard: Never delete main/master branches
+#       if [[ "$branch_to_check" == "main" || "$branch_to_check" == "master" ]]; then
+#         branch_deletion_reason="main branch"
+#       else
+#         # Check if branch has uncommitted changes
+#         if ! git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+#           branch_deletion_reason="has changes"
+#         else
+#           # Check if branch is ahead/behind or has different commits
+#           local base_commit=$(git merge-base "HEAD" "$branch_to_check" 2>/dev/null)
+#           if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
+#             can_delete_branch=true
+#           else
+#             branch_deletion_reason="has diverged"
+#           fi
+#         fi
+#       fi
+#     fi
+#     
+#     # Check if we're currently in the worktree being removed
+#     local current_dir="$(pwd)"
+#     local main_worktree="$(_gtr_get_main_worktree)"
+#     local need_to_cd_back=false
+#     
+#     if [[ "$current_dir" == "$worktree_path" ]]; then
+#       echo "🔄 Currently in worktree being removed, changing to main repository..."
+#       cd "$main_worktree" || {
+#         echo "❌ Failed to change to main repository directory"
+#         return 1
+#       }
+#       need_to_cd_back=true
+#     fi
+#     
+#     # Only remove the worktree if we can delete the branch OR force is used
+#     if [[ "$can_delete_branch" == "true" || "$force" == "true" ]]; then
+#       # Remove the worktree
+#       if git worktree remove "$worktree_path"; then
+#         echo "Removed worktree '$name'"
+# 
+#         # Now handle branch deletion based on our earlier checks
+#         if [[ -n "$branch_to_check" ]]; then
+#           if [[ "$can_delete_branch" == "true" ]]; then
+#             # Always ask for confirmation if this is a fallback branch, even with --force
+#             if [[ "$is_fallback" == "true" ]]; then
+#               printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
+#               read -r reply
+#               case "$reply" in
+#                 [yY]|[yY][eE][sS])
+#                   echo "Deleting branch '$branch_to_check'"
+#                   git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+#                   ;;
+#                 *)
+#                   echo "Skipped deleting branch '$branch_to_check'"
+#                   ;;
+#               esac
+#             elif [[ "$force" == "true" ]]; then
+#               echo "Deleting branch '$branch_to_check' (no changes)"
+#               git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+#             else
+#               printf "Delete branch '$branch_to_check' (no changes)? [y/N] "
+#               read -r reply
+#               case "$reply" in
+#                 [yY]|[yY][eE][sS])
+#                   echo "Deleting branch '$branch_to_check'"
+#                   git branch -d "$branch_to_check" 2>/dev/null || echo "Could not delete branch '$branch_to_check'"
+#                   ;;
+#                 *)
+#                   echo "Skipped deleting branch '$branch_to_check'"
+#                   ;;
+#               esac
+#             fi
+#           else
+#             echo "Branch '$branch_to_check' $branch_deletion_reason. Not deleting."
+#           fi
+#         fi
+# 
+#         # If we changed directories, we can't go back to the original worktree since it's deleted
+#         if [[ "$need_to_cd_back" == "true" ]]; then
+#           echo "✅ Worktree removed successfully. You're now in the main repository."
+#         fi
+#       else
+#         echo "Failed to remove worktree '$name'"
+# 
+#         # If we changed directories and removal failed, change back to original directory
+#         if [[ "$need_to_cd_back" == "true" ]]; then
+#           echo "🔄 Changing back to original worktree directory..."
+#           cd "$current_dir" || echo "⚠️  Could not change back to original directory"
+#         fi
+#       fi
+#     else
+#       # Worktree removal blocked because branch can't be safely deleted
+#       if [[ -n "$branch_to_check" ]]; then
+#         echo "❌ Cannot remove worktree '$name'"
+#         echo "   Branch '$branch_to_check' $branch_deletion_reason."
+#         echo "   Use --force to remove anyway."
+#       else
+#         echo "❌ Cannot remove worktree '$name' (no associated branch found)"
+#         echo "   Use --force to remove anyway."
+#       fi
+# 
+#       # If we changed directories, change back to original directory
+#       if [[ "$need_to_cd_back" == "true" ]]; then
+#         echo "🔄 Changing back to original worktree directory..."
+#         cd "$current_dir" || echo "⚠️  Could not change back to original directory"
+#       fi
+#     fi
+#   fi
+# }
 
 _gtr_prune_worktrees() {
   local base_branch="${_GTR_BASE_BRANCH:-main}"

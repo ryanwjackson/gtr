@@ -158,6 +158,94 @@ test_remove_clean_branch() {
   cleanup_remove_test_env
 }
 
+# Test removing worktree with diverged branch but identical content (squash merge scenario)
+test_remove_diverged_but_squashed_branch() {
+  setup_remove_test_env
+
+  # Create a worktree with changes
+  local worktree_name="test-squashed"
+  local worktree_path="$GTR_BASE_DIR/$worktree_name"
+  local branch_name="worktrees/test-repo/testuser/$worktree_name"
+
+  # Create worktree
+  git worktree add -b "$branch_name" "$worktree_path" > /dev/null 2>&1
+
+  # Add changes to the worktree branch
+  cd "$worktree_path"
+  echo "feature implementation" > feature.txt
+  git add feature.txt
+  git commit -m "Add feature" > /dev/null 2>&1
+
+  # Go back to main repo and simulate a squash merge by adding the same content
+  cd "$TEST_REPO_DIR"
+  echo "feature implementation" > feature.txt
+  git add feature.txt
+  git commit -m "Squash merge: Add feature" > /dev/null 2>&1
+
+  # Now the branch has diverged but content is identical (squash merge scenario)
+
+  # Set up global args for gtr_remove
+  _GTR_ARGS=("$worktree_name")
+
+  # Attempt to remove - should succeed because content is identical
+  local output
+  output=$(echo "n" | gtr_remove 2>&1)
+
+  # Worktree should be removed because content is identical despite divergence
+  assert_file_not_exists "$worktree_path" "Worktree should be removed when content is identical"
+  assert_contains "$output" "Removed worktree" "Should show success message"
+  assert_contains "$output" "diverged but content is identical" "Should detect squash merge scenario"
+  assert_contains "$output" "likely squash merged" "Should mention squash merge"
+
+  # Branch should still exist (we said no to deletion)
+  local branch_exists
+  branch_exists=$(git show-ref --verify --quiet "refs/heads/$branch_name" && echo "yes" || echo "no")
+  assert_equals "yes" "$branch_exists" "Branch should still exist when user says no to deletion"
+
+  cleanup_remove_test_env
+}
+
+# Test dry run mode for diverged but squashed branch
+test_remove_squashed_branch_dry_run() {
+  setup_remove_test_env
+
+  # Create a worktree with changes
+  local worktree_name="test-squashed-dry"
+  local worktree_path="$GTR_BASE_DIR/$worktree_name"
+  local branch_name="worktrees/test-repo/testuser/$worktree_name"
+
+  # Create worktree
+  git worktree add -b "$branch_name" "$worktree_path" > /dev/null 2>&1
+
+  # Add changes to the worktree branch
+  cd "$worktree_path"
+  echo "feature implementation" > feature.txt
+  git add feature.txt
+  git commit -m "Add feature" > /dev/null 2>&1
+
+  # Go back to main repo and simulate a squash merge by adding the same content
+  cd "$TEST_REPO_DIR"
+  echo "feature implementation" > feature.txt
+  git add feature.txt
+  git commit -m "Squash merge: Add feature" > /dev/null 2>&1
+
+  # Set up global args for gtr_remove with --dry-run
+  _GTR_ARGS=("$worktree_name" "--dry-run")
+
+  # Run in dry-run mode
+  local output
+  output=$(gtr_remove 2>&1)
+
+  # Nothing should actually be removed
+  assert_file_exists "$worktree_path" "Worktree should still exist in dry run"
+  assert_contains "$output" "DRY RUN" "Should show dry run message"
+  assert_contains "$output" "Would delete branch" "Should show it would delete branch"
+  assert_contains "$output" "diverged but content identical" "Should detect squash merge scenario in dry run"
+  assert_contains "$output" "likely squash merged" "Should mention squash merge in dry run"
+
+  cleanup_remove_test_env
+}
+
 # Test dry run mode
 test_remove_dry_run() {
   setup_remove_test_env
@@ -202,6 +290,8 @@ run_remove_tests() {
   register_test "test_remove_diverged_branch_no_force" "test_remove_diverged_branch_no_force"
   register_test "test_remove_diverged_branch_with_force" "test_remove_diverged_branch_with_force"
   register_test "test_remove_clean_branch" "test_remove_clean_branch"
+  register_test "test_remove_diverged_but_squashed_branch" "test_remove_diverged_but_squashed_branch"
+  register_test "test_remove_squashed_branch_dry_run" "test_remove_squashed_branch_dry_run"
   register_test "test_remove_dry_run" "test_remove_dry_run"
 
   finish_test_suite

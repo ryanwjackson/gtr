@@ -68,6 +68,48 @@ test_gtr_prune_dry_run() {
   cleanup_mock_git_repo
 }
 
+# Test prune functionality with squash merged branches (diverged but identical content)
+test_gtr_prune_squash_merged() {
+  setup_mock_git_repo
+  enable_git_mocking
+
+  # Mock git worktree list to return some worktrees
+  mock_git_worktree_list() {
+    echo "worktree /tmp/test-squashed"
+    echo "branch refs/heads/feature-squashed"
+  }
+
+  # Mock git branch --merged to return NO merged branches (simulating diverged history)
+  mock_git_branch_merged() {
+    echo "  main"
+  }
+
+  # Mock git merge-base --is-ancestor to return false (not an ancestor)
+  mock_git_merge_base_is_ancestor() {
+    return 1  # Not an ancestor
+  }
+
+  # Mock git rev-list to return some commits (simulating diverged commits)
+  mock_git_rev_list() {
+    echo "commit1"
+    echo "commit2"
+  }
+
+  # Mock git diff --quiet to return success (content is identical)
+  mock_git_diff_quiet() {
+    return 0  # Content is identical
+  }
+
+  # Test dry run with squash merged branch
+  local result
+  result=$(GTR_BASE_DIR="/tmp" _GTR_DRY_RUN="true" _gtr_prune_worktrees 2>&1)
+  assert_contains "$result" "DRY RUN" "Should show dry run output"
+  assert_contains "$result" "likely squash merged" "Should detect squash merge scenario"
+
+  disable_git_mocking
+  cleanup_mock_git_repo
+}
+
 # Test prune functionality with force
 test_gtr_prune_force() {
   setup_mock_git_repo
@@ -104,6 +146,7 @@ run_prune_tests() {
   register_test "test_gtr_ask_user_with_input" "test_gtr_ask_user_with_input"
   register_test "test_gtr_ask_user_empty_input" "test_gtr_ask_user_empty_input"
   register_test "test_gtr_prune_dry_run" "test_gtr_prune_dry_run"
+  register_test "test_gtr_prune_squash_merged" "test_gtr_prune_squash_merged"
   register_test "test_gtr_prune_force" "test_gtr_prune_force"
 
   cleanup_test_env

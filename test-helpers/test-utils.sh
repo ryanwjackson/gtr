@@ -321,7 +321,11 @@ finish_test_suite() {
   echo -e "${YELLOW}=== Test Suite Summary: $TEST_SUITE ===${NC}"
   echo "  Total tests: $TEST_COUNT"
   echo -e "  Passed: ${GREEN}$PASSED_COUNT${NC}"
-  echo -e "  Failed: ${RED}$FAILED_COUNT${NC}"
+  if [[ $FAILED_COUNT -eq 0 ]]; then
+    echo -e "  Failed: ${GREEN}$FAILED_COUNT${NC}"
+  else
+    echo -e "  Failed: ${RED}$FAILED_COUNT${NC}"
+  fi
 
   if [[ $FAILED_COUNT -eq 0 ]]; then
     echo -e "  ${GREEN}✅ All tests passed!${NC}"
