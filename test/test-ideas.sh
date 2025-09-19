@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source testing framework
-source "$SCRIPT_DIR/../test-helpers/test-utils.sh"
+source "$SCRIPT_DIR/test-helpers/test-utils.sh"
 
 # Source gtr modules
 source "$SCRIPT_DIR/../lib/gtr-core.sh"
