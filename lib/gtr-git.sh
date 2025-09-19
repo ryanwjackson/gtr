@@ -3,6 +3,7 @@
 # gtr-git.sh - Git operations and worktree management
 # Contains functions for creating, removing, and managing git worktrees
 
+
 _gtr_find_or_create_worktree() {
   local name="$1"
   local should_open="${2:-false}"
@@ -285,7 +286,12 @@ _gtr_remove_worktree() {
           if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
             echo "🔍 [DRY RUN] Would delete branch: $branch_to_check"
           else
-            echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has diverged)"
+            # Branch has diverged, but check if content is identical (e.g., squash merge case)
+            if git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+              echo "🔍 [DRY RUN] Would delete branch: $branch_to_check (diverged but content identical - likely squash merged)"
+            else
+              echo "🔍 [DRY RUN] Would skip deletion of branch '$branch_to_check' (has diverged)"
+            fi
           fi
         fi
       fi
@@ -309,7 +315,13 @@ _gtr_remove_worktree() {
           if [[ -n "$base_commit" ]] && git diff --quiet "$base_commit" "$branch_to_check" 2>/dev/null; then
             can_delete_branch=true
           else
-            branch_deletion_reason="has diverged"
+            # Branch has diverged, but check if content is identical (e.g., squash merge case)
+            if git diff --quiet "HEAD" "$branch_to_check" 2>/dev/null; then
+              echo "🔍 Branch '$branch_to_check' has diverged but content is identical (likely squash merged)"
+              can_delete_branch=true
+            else
+              branch_deletion_reason="has diverged"
+            fi
           fi
         fi
       fi
@@ -484,6 +496,12 @@ _gtr_prune_worktrees() {
       if [[ "$branch_commits" -eq 0 ]]; then
         should_remove=true
         reason="all commits present in $base_branch (squash merged)"
+      else
+        # Fallback: Check if content is identical despite diverged history (squash merge scenario)
+        if git diff --quiet "$base_branch" "$branch_name" 2>/dev/null; then
+          should_remove=true
+          reason="diverged but content identical (likely squash merged)"
+        fi
       fi
     fi
 
