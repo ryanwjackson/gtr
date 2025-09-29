@@ -39,4 +39,4 @@ auto_fix=false
 
 [hooks.post-create]
 # Method for syncing .env files: 'copy' or 'symlink'
-DOTENV_SYNC_METHOD=symlink
+DOTENV_SYNC_METHOD=copy
