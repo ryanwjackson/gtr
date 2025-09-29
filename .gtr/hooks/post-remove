@@ -27,6 +27,25 @@ if [[ "$DRY_RUN" == "true" ]]; then
     exit 0
 fi
 
+# Get the main worktree directory
+MAIN_WORKTREE=$(git rev-parse --show-toplevel)
+if [[ "$(git rev-parse --git-dir)" == *"/.git/worktrees/"* ]]; then
+    # We're in a worktree, get the main repository
+    MAIN_GIT_DIR=$(dirname "$(dirname "$(git rev-parse --git-dir)")")
+    MAIN_WORKTREE=$(dirname "$MAIN_GIT_DIR")
+fi
+
+# Source the config functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$MAIN_WORKTREE/lib/gtr-config.sh" ]]; then
+    source "$MAIN_WORKTREE/lib/gtr-config.sh"
+else
+    echo "⚠️  Warning: Could not find gtr-config.sh, using defaults"
+fi
+
+# Note: Original .env* files in the main worktree are preserved
+echo "ℹ️  Original .env* files in main worktree are preserved"
+
 # Example: Clean up development database
 # echo "🗄️  Cleaning up development database..."
 # DB_NAME="dev_${WORKTREE_NAME//-/_}"

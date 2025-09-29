@@ -32,3 +32,7 @@ show_detailed_diffs=false
 
 # Whether to auto-fix missing files without prompts
 auto_fix=false
+
+[hooks.post-create]
+# Method for syncing .env files: 'copy' or 'symlink'
+DOTENV_SYNC_METHOD=symlink

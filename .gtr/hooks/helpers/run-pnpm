@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# gtr helper: run-pnpm
+# Runs pnpm commands in the worktree
+#
+# Arguments:
+#   $1 - worktree path
+#   $2 - run_pnpm flag ("true" or "false")
+#
+# Returns:
+#   Exit code 0 on success, non-zero on failure
+
+WORKTREE_PATH="$1"
+RUN_PNPM="$2"
+
+if [[ -z "$WORKTREE_PATH" ]]; then
+    echo "Error: run-pnpm requires worktree path" >&2
+    exit 1
+fi
+
+# Default to true if not specified
+if [[ -z "$RUN_PNPM" ]]; then
+    RUN_PNPM="true"
+fi
+
+# Skip if disabled
+if [[ "$RUN_PNPM" != "true" ]]; then
+    echo "⏭️  Skipping pnpm commands (disabled)"
+    exit 0
+fi
+
+# Check if package.json exists
+if [[ ! -f "$WORKTREE_PATH/package.json" ]]; then
+    echo "⏭️  Skipping pnpm commands (no package.json found)"
+    exit 0
+fi
+
+# Check if pnpm is available
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "⚠️  pnpm not found, skipping pnpm commands"
+    exit 0
+fi
+
+echo "📦 Running pnpm commands in worktree..."
+
+# Ensure stdin is available for interactive prompts
+if [[ -t 0 ]]; then
+    # Running interactively - allow user input
+    echo "  Running pnpm approve-builds..."
+    (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+    
+    echo "  Running pnpm install..."
+    (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
+else
+    # Running non-interactively - auto-approve all builds
+    echo "  (Non-interactive mode: auto-approving all builds)"
+    (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds) || echo "  ⚠️  pnpm install failed"
+fi
+
+echo "✅ pnpm commands completed"
+exit 0

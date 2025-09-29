@@ -28,106 +28,63 @@ if [[ "$(git rev-parse --git-dir)" == *"/.git/worktrees/"* ]]; then
     MAIN_WORKTREE=$(dirname "$MAIN_GIT_DIR")
 fi
 
-# Copy local files from main worktree to new worktree
-echo "📋 Copying local files to worktree..."
-
-# File patterns to copy (customize as needed)
-FILE_PATTERNS=(
-    ".env*local*"
-    ".env.*local*"
-    ".claude/"
-    ".anthropic/"
-)
-
-copied_files=()
-for pattern in "${FILE_PATTERNS[@]}"; do
-    if [[ "$pattern" == */ ]]; then
-        # Directory pattern
-        dir_name="${pattern%/}"
-        if [[ -d "$MAIN_WORKTREE/$dir_name" ]]; then
-            if cp -r "$MAIN_WORKTREE/$dir_name" "$WORKTREE_PATH/" 2>/dev/null; then
-                copied_files+=("$dir_name/")
-            fi
-        fi
-    else
-        # File pattern - use find to search recursively
-        while IFS= read -r -d '' file; do
-            if [[ -f "$file" ]]; then
-                relative_path="${file#$MAIN_WORKTREE/}"
-                target_path="$WORKTREE_PATH/$relative_path"
-                target_dir_path=$(dirname "$target_path")
-
-                # Create target directory if it doesn't exist
-                mkdir -p "$target_dir_path" 2>/dev/null
-
-                # Copy file
-                if cp "$file" "$target_path" 2>/dev/null; then
-                    copied_files+=("$relative_path")
-                fi
-            fi
-        done < <(find "$MAIN_WORKTREE" -name "$pattern" -type f -print0 2>/dev/null)
-    fi
-done
-
-# Report what was copied
-if [[ ${#copied_files[@]} -gt 0 ]]; then
-    echo "📋 Copied local files: ${copied_files[*]}"
+# Source the config functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$MAIN_WORKTREE/lib/gtr-config.sh" ]]; then
+    source "$MAIN_WORKTREE/lib/gtr-config.sh"
 else
-    echo "ℹ️  No local files found to copy"
+    echo "⚠️  Warning: Could not find gtr-config.sh, using defaults"
 fi
 
-# Whether to run pnpm commands by default
-run_pnpm=true
+# Read configuration values
+DOTENV_SYNC_METHOD=$(_gtr_read_config_setting "$MAIN_WORKTREE" "hooks.post-create" "DOTENV_SYNC_METHOD" "symlink")
+RUN_PNPM=$(_gtr_read_config_setting "$MAIN_WORKTREE" "settings" "run_pnpm" "true")
 
-# Example: Run pnpm commands if enabled
-if [[ "$run_pnpm" == "true" && -f "$WORKTREE_PATH/package.json" ]]; then
-    echo "📦 Running pnpm commands in worktree..."
+# Sync .env files using the configured method
+echo "📋 Syncing local files to worktree..."
 
-    if command -v pnpm >/dev/null 2>&1; then
-        echo "  Running pnpm approve-builds..."
-        # Ensure stdin is available for interactive prompts
-        if [[ -t 0 ]]; then
-            # Running interactively - allow user input
-            (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
+if [[ "$DOTENV_SYNC_METHOD" == "copy" ]]; then
+    echo "  Using copy method for .env files..."
+    if [[ -f "$SCRIPT_DIR/helpers/copy-dotenv" ]]; then
+        copied_files=()
+        while IFS= read -r file; do
+            [[ -n "$file" ]] && copied_files+=("$file")
+        done < <("$SCRIPT_DIR/helpers/copy-dotenv" "$MAIN_WORKTREE" "$WORKTREE_PATH")
+        
+        if [[ ${#copied_files[@]} -gt 0 ]]; then
+            echo "📋 Copied local files: ${copied_files[*]}"
         else
-            # Running non-interactively - auto-approve all builds
-            echo "  (Non-interactive mode: auto-approving all builds)"
-            (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds) || echo "  ⚠️  pnpm install failed"
-        fi
-
-        # Only run install if we didn't already run it with --dangerously-allow-all-builds
-        if [[ -t 0 ]]; then
-            echo "  Running pnpm install..."
-            (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
+            echo "ℹ️  No local files found to copy"
         fi
     else
-        echo "  ⚠️  pnpm not found, skipping pnpm commands"
+        echo "⚠️  copy-dotenv helper not found, skipping file sync"
+    fi
+elif [[ "$DOTENV_SYNC_METHOD" == "symlink" ]]; then
+    echo "  Using symlink method for .env files..."
+    if [[ -f "$SCRIPT_DIR/helpers/symlink-dotenv" ]]; then
+        symlinked_files=()
+        while IFS= read -r file; do
+            [[ -n "$file" ]] && symlinked_files+=("$file")
+        done < <("$SCRIPT_DIR/helpers/symlink-dotenv" "$MAIN_WORKTREE" "$WORKTREE_PATH")
+        
+        if [[ ${#symlinked_files[@]} -gt 0 ]]; then
+            echo "🔗 Symlinked local files: ${symlinked_files[*]}"
+        else
+            echo "ℹ️  No local files found to symlink"
+        fi
+    else
+        echo "⚠️  symlink-dotenv helper not found, skipping file sync"
     fi
 else
-    echo "⏭️  Skipping pnpm commands"
+    echo "⚠️  Unknown DOTENV_SYNC_METHOD: $DOTENV_SYNC_METHOD (expected 'copy' or 'symlink')"
 fi
 
-# Example: Set up IDE configuration
-# echo "🔧 Setting up IDE configuration..."
-# if [[ -f "$WORKTREE_PATH/.vscode/settings.json" ]]; then
-#     # Customize VS Code settings for this worktree
-#     echo "  Customizing VS Code settings..."
-# fi
-
-# Example: Create development database
-# echo "🗄️  Setting up development database..."
-# (cd "$WORKTREE_PATH" && npm run db:setup:dev) || echo "  ⚠️  Database setup failed"
-
-# Example: Install git hooks in the worktree
-# echo "🪝 Installing git hooks..."
-# (cd "$WORKTREE_PATH" && npx husky install) || echo "  ⚠️  Husky install failed"
-
-# Example: Notify external systems
-# echo "📡 Notifying development tools..."
-# curl -X POST "https://your-dev-server.com/worktree/created" \
-#   -H "Content-Type: application/json" \
-#   -d "{\"name\":\"$WORKTREE_NAME\",\"path\":\"$WORKTREE_PATH\",\"branch\":\"$BRANCH_NAME\"}" \
-#   >/dev/null 2>&1 || echo "  ⚠️  Failed to notify development server"
+# Run pnpm commands if enabled
+if [[ -f "$SCRIPT_DIR/helpers/run-pnpm" ]]; then
+    "$SCRIPT_DIR/helpers/run-pnpm" "$WORKTREE_PATH" "$RUN_PNPM"
+else
+    echo "⚠️  run-pnpm helper not found, skipping pnpm commands"
+fi
 
 echo "✅ Post-create setup completed"
 exit 0

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# gtr helper: copy-dotenv
+# Copies .env files from main worktree to new worktree
+#
+# Arguments:
+#   $1 - main worktree path
+#   $2 - target worktree path
+#
+# Returns:
+#   Array of copied files via stdout (one per line)
+
+MAIN_WORKTREE="$1"
+WORKTREE_PATH="$2"
+
+if [[ -z "$MAIN_WORKTREE" || -z "$WORKTREE_PATH" ]]; then
+    echo "Error: copy-dotenv requires main worktree and target worktree paths" >&2
+    exit 1
+fi
+
+# File patterns to copy (from config or default)
+FILE_PATTERNS=(
+    ".env*local*"
+    ".env.*local*"
+    ".claude/"
+    ".anthropic/"
+)
+
+copied_files=()
+for pattern in "${FILE_PATTERNS[@]}"; do
+    if [[ "$pattern" == */ ]]; then
+        # Directory pattern
+        dir_name="${pattern%/}"
+        if [[ -d "$MAIN_WORKTREE/$dir_name" ]]; then
+            if cp -r "$MAIN_WORKTREE/$dir_name" "$WORKTREE_PATH/" 2>/dev/null; then
+                copied_files+=("$dir_name/")
+            fi
+        fi
+    else
+        # File pattern - use find to search recursively
+        while IFS= read -r -d '' file; do
+            if [[ -f "$file" ]]; then
+                relative_path="${file#$MAIN_WORKTREE/}"
+                target_path="$WORKTREE_PATH/$relative_path"
+                target_dir_path=$(dirname "$target_path")
+
+                # Create target directory if it doesn't exist
+                mkdir -p "$target_dir_path" 2>/dev/null
+
+                # Copy file
+                if cp "$file" "$target_path" 2>/dev/null; then
+                    copied_files+=("$relative_path")
+                fi
+            fi
+        done < <(find "$MAIN_WORKTREE" -name "$pattern" -type f -print0 2>/dev/null)
+    fi
+done
+
+# Output copied files (one per line)
+for file in "${copied_files[@]}"; do
+    echo "$file"
+done

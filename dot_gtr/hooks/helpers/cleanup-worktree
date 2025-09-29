@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# gtr helper: cleanup-worktree
+# Safely cleans up worktree files, preserving original .env* files
+#
+# Arguments:
+#   $1 - worktree path (now removed)
+#   $2 - main worktree path
+#
+# Returns:
+#   Array of cleaned files via stdout (one per line)
+
+WORKTREE_PATH="$1"
+MAIN_WORKTREE="$2"
+
+if [[ -z "$WORKTREE_PATH" || -z "$MAIN_WORKTREE" ]]; then
+    echo "Error: cleanup-worktree requires worktree path and main worktree path" >&2
+    exit 1
+fi
+
+# Check if worktree path still exists (it shouldn't after removal)
+if [[ -d "$WORKTREE_PATH" ]]; then
+    echo "Warning: Worktree path still exists, this may not be a post-remove cleanup" >&2
+fi
+
+# File patterns that should be cleaned up (but not original .env* files)
+CLEANUP_PATTERNS=(
+    ".claude/"
+    ".anthropic/"
+)
+
+cleaned_files=()
+
+# Note: Since the worktree is already removed, we can't actually clean up files
+# This helper is more for documentation and future use cases where we might
+# need to clean up specific files before worktree removal
+
+echo "ℹ️  Worktree cleanup completed (worktree already removed)"
+echo "ℹ️  Original .env* files in main worktree are preserved"
+
+# Output cleaned files (one per line) - empty in this case since worktree is gone
+for file in "${cleaned_files[@]}"; do
+    echo "$file"
+done
