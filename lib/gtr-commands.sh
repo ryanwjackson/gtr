@@ -92,16 +92,27 @@ gtr_remove() {
 gtr_cd() {
   local name=""
   if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
-    name="${_GTR_ARGS[1]}"
+    name="${_GTR_ARGS[0]}"
   fi
-  local base="$(_gtr_get_base_dir)"
 
   if [[ -z "$name" ]]; then
     echo "Usage: gtr cd <name>"
     return 1
   fi
 
-  cd "$base/$name" || { echo "No such worktree: $base/$name"; return 1; }
+  local worktree_path="$(_gtr_get_worktree_path "$name")"
+
+  # First check if the worktree directory exists
+  if [[ -d "$worktree_path" ]]; then
+    cd "$worktree_path" || { echo "Cannot change to worktree: $worktree_path"; return 1; }
+  # Otherwise check if it's a branch name
+  elif git rev-parse --verify "$name" >/dev/null 2>&1; then
+    local main_worktree="$(_gtr_get_main_worktree)"
+    cd "$main_worktree" || { echo "Cannot change to main worktree: $main_worktree"; return 1; }
+  else
+    echo "No such worktree or branch: $name"
+    return 1
+  fi
 }
 
 gtr_list() {
