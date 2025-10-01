@@ -7,8 +7,7 @@
 _gtr_find_or_create_worktree() {
   local name="$1"
   local should_open="${2:-false}"
-  local base="$(_gtr_get_base_dir)"
-  local dir="$base/$name"
+  local dir="$(_gtr_get_worktree_path "$name")"
 
   # If worktree already exists, return success
   if [[ -d "$dir" ]]; then
@@ -40,6 +39,9 @@ _gtr_find_or_create_worktree() {
       local base_branch="${_GTR_BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
       echo "Creating worktree '$name' based on $base_branch…"
 
+      # Create directory structure if it doesn't exist
+      mkdir -p "$(dirname "$dir")"
+
       if git worktree add "$dir" -b "$branch_name" "$base_branch"; then
         echo "✅ Created worktree '$name'"
 
@@ -70,7 +72,7 @@ _gtr_find_or_create_worktree() {
 _gtr_create_worktree() {
   local name="$1"
   local base_branch="${_GTR_BASE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
-  local base="$(_gtr_get_base_dir)"
+  local worktree_path="$(_gtr_get_worktree_path "$name")"
   local branch_name="$(_gtr_get_worktree_branch_name "$name")"
   local main_worktree="$(_gtr_get_main_worktree)"
   local current_branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -142,13 +144,16 @@ _gtr_create_worktree() {
   fi
 
   # Execute pre-create hook
-  if ! _gtr_execute_pre_create_hook "$name" "$base/$name" "$branch_name" "$base_branch" "$main_worktree"; then
+  if ! _gtr_execute_pre_create_hook "$name" "$worktree_path" "$branch_name" "$base_branch" "$main_worktree"; then
     echo "❌ Pre-create hook failed, aborting worktree creation"
     return 1
   fi
 
+  # Create directory structure if it doesn't exist
+  mkdir -p "$(dirname "$worktree_path")"
+
   # Create worktree and branch from the specified base
-  if git worktree add "$base/$name" -b "$branch_name" "$base_branch"; then
+  if git worktree add "$worktree_path" -b "$branch_name" "$base_branch"; then
     echo "✅ Created worktree '$name' based on $base_branch"
 
     # Copy uncommitted files to the worktree if requested
@@ -157,7 +162,7 @@ _gtr_create_worktree() {
 
       for file_path in "${uncommitted_files[@]}"; do
         local source_file="$main_worktree/$file_path"
-        local target_file="$base/$name/$file_path"
+        local target_file="$worktree_path/$file_path"
         local target_dir=$(dirname "$target_file")
 
         # Create target directory if it doesn't exist
@@ -179,20 +184,20 @@ _gtr_create_worktree() {
     # Copy local files from main worktree to new worktree (only if we have files to copy)
     local patterns=($(_gtr_read_config "$main_worktree"))
     if [[ ${#patterns[@]} -gt 0 ]]; then
-      _gtr_copy_local_files "$main_worktree" "$base/$name" "true" "$main_worktree"
+      _gtr_copy_local_files "$main_worktree" "$worktree_path" "true" "$main_worktree"
     fi
 
     # Run pnpm commands if not disabled
-    _gtr_run_pnpm_commands "$base/$name" "$_GTR_NO_INSTALL"
+    _gtr_run_pnpm_commands "$worktree_path" "$_GTR_NO_INSTALL"
 
     # Execute post-create hook
-    _gtr_execute_post_create_hook "$name" "$base/$name" "$branch_name" "$base_branch" "$main_worktree"
+    _gtr_execute_post_create_hook "$name" "$worktree_path" "$branch_name" "$base_branch" "$main_worktree"
 
     if [[ "$_GTR_NO_OPEN" == "false" ]]; then
-      echo "Opening '$base/$name' with $_GTR_EDITOR"
-      $_GTR_EDITOR "$base/$name"
+      echo "Opening '$worktree_path' with $_GTR_EDITOR"
+      $_GTR_EDITOR "$worktree_path"
     else
-      echo "Worktree ready at '$base/$name'"
+      echo "Worktree ready at '$worktree_path'"
     fi
     return 0
   else
@@ -205,14 +210,14 @@ _gtr_remove_worktree() {
   local name="$1"
   local force="$2"
   local dry_run="$3"
-  local base="$(_gtr_get_base_dir)"
+  local expected_path="$(_gtr_get_worktree_path "$name")"
   local branch_name="$(_gtr_get_worktree_branch_name "$name")"
   local worktree_path=""
   local worktree_branch=""
 
   # First, try to find the worktree by directory name
-  if [[ -d "$base/$name" ]]; then
-    worktree_path="$base/$name"
+  if [[ -d "$expected_path" ]]; then
+    worktree_path="$expected_path"
     # Get the actual branch the worktree is on
     worktree_branch=$(git worktree list --porcelain | grep -A1 "worktree $worktree_path" | grep "branch refs/heads/" | sed 's/.*branch refs\/heads\///')
   else

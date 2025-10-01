@@ -86,6 +86,16 @@ _gtr_get_worktree_branch_name() {
   echo "worktrees/$repo_name/$username/$worktree_name"
 }
 
+# Helper function for generating worktree paths
+# Usage: _gtr_get_worktree_path "worktree_name"
+# Returns: $base_dir/$username/$worktree_name
+_gtr_get_worktree_path() {
+  local worktree_name="$1"
+  local username="${_GTR_USERNAME:-$(whoami)}"
+  local base="$(_gtr_get_base_dir)"
+  echo "$base/$username/$worktree_name"
+}
+
 _gtr_get_main_worktree() {
   # Get the main worktree (the one that's not a worktree)
   local current_worktree=$(git rev-parse --show-toplevel)
