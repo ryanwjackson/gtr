@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# gtr HOOK_NAME hook
+# This hook runs HOOK_DESCRIPTION
+#
+# Arguments:
+HOOK_ARGS#
+# Exit codes:
+#   0 - success
+#   non-zero - failure
+
+HOOK_VARS
+echo "🔧 HOOK_NAME hook executing for: HOOK_EXAMPLE_VAR"
+
+# Get the main worktree directory (useful for finding shared resources)
+MAIN_WORKTREE=$(git rev-parse --show-toplevel)
+if [[ "$(git rev-parse --git-dir)" == *"/.git/worktrees/"* ]]; then
+    # We're in a worktree, get the main repository
+    MAIN_GIT_DIR=$(dirname "$(dirname "$(git rev-parse --git-dir)")")
+    MAIN_WORKTREE=$(dirname "$MAIN_GIT_DIR")
+fi
+
+# Add your custom hook logic here
+# Examples:
+# - Run tests or linting
+# - Copy or modify files
+# - Send notifications
+# - Update external systems
+
+echo "✅ HOOK_NAME hook completed"
+exit 0

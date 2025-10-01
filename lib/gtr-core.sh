@@ -319,6 +319,7 @@ COMMANDS:
     cd <name>                     Change directory to worktree
     list, ls, l                   List all worktrees
     idea, i {create|list|open}    Manage idea files
+    generate, g {hook}            Generate new hooks from templates
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
