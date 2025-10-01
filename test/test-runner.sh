@@ -99,6 +99,7 @@ run_all_tests() {
   run_test_suite "$SCRIPT_DIR/actions/test-prune.sh" "Prune Command"
   run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
   run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
+  run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
 
   # Show final summary
   show_final_summary
@@ -132,6 +133,7 @@ run_action_tests() {
   run_test_suite "$SCRIPT_DIR/actions/test-prune.sh" "Prune Command"
   run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
   run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
+  run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
 
   show_final_summary
 }
@@ -172,6 +174,9 @@ run_specific_test() {
       ;;
     ideas)
       run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
+      ;;
+    generate)
+      run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
       ;;
     # Groups
     helpers)

@@ -120,6 +120,9 @@ gtr() {
     i|idea)
       gtr_idea
       ;;
+    g|generate)
+      gtr_generate
+      ;;
     claude)
       gtr_claude
       ;;
@@ -136,7 +139,7 @@ gtr() {
       gtr_init
       ;;
     *)
-      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, claude, cursor, prune, doctor, init)"; return 1;;
+      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, generate, claude, cursor, prune, doctor, init)"; return 1;;
   esac
 }
 
