@@ -237,6 +237,47 @@ _gtr_remove_worktree() {
     ')
 
     if [[ -z "$worktree_path" ]]; then
+      # Worktree not found, but check if the branch exists
+      if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+        # Branch exists but worktree doesn't - offer to delete the branch
+        if [[ "$dry_run" == "true" ]]; then
+          echo "🔍 [DRY RUN] Worktree not found but branch exists: $branch_name"
+          echo "🔍 [DRY RUN] Would delete branch: $branch_name"
+          return 0
+        fi
+
+        echo "⚠️  Worktree not found but branch exists: $branch_name"
+
+        if [[ "$force" == "true" ]]; then
+          echo "Deleting branch '$branch_name'"
+          if git branch -D "$branch_name" 2>/dev/null; then
+            echo "✅ Deleted branch '$branch_name'"
+          else
+            echo "❌ Failed to delete branch '$branch_name'"
+            return 1
+          fi
+        else
+          printf "Delete branch '$branch_name'? [y/N] "
+          read -r reply
+          case "$reply" in
+            [yY]|[yY][eE][sS])
+              echo "Deleting branch '$branch_name'"
+              if git branch -D "$branch_name" 2>/dev/null; then
+                echo "✅ Deleted branch '$branch_name'"
+              else
+                echo "❌ Failed to delete branch '$branch_name'"
+                return 1
+              fi
+              ;;
+            *)
+              echo "Skipped deleting branch '$branch_name'"
+              ;;
+          esac
+        fi
+        return 0
+      fi
+
+      # Neither worktree nor branch found
       echo "❌ Worktree not found: $name"
       echo "💡 Available worktrees:"
       git worktree list
