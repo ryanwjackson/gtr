@@ -88,12 +88,13 @@ _gtr_get_worktree_branch_name() {
 
 # Helper function for generating worktree paths
 # Usage: _gtr_get_worktree_path "worktree_name"
-# Returns: $base_dir/$username/$worktree_name
+# Returns: $base_dir/$repo_name/$username/$worktree_name
 _gtr_get_worktree_path() {
   local worktree_name="$1"
   local username="${_GTR_USERNAME:-$(whoami)}"
   local base="$(_gtr_get_base_dir)"
-  echo "$base/$username/$worktree_name"
+  local repo_name="$(_gtr_get_repo_name)"
+  echo "$base/$repo_name/$username/$worktree_name"
 }
 
 _gtr_get_main_worktree() {
