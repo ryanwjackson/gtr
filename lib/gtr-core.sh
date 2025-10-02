@@ -99,8 +99,13 @@ _gtr_get_worktree_path() {
 
 _gtr_get_main_worktree() {
   # Get the main worktree (the one that's not a worktree)
-  local current_worktree=$(git rev-parse --show-toplevel)
-  local git_dir=$(git rev-parse --git-dir)
+  # Returns empty string if not in a git repository
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local current_worktree=$(git rev-parse --show-toplevel 2>/dev/null)
+  local git_dir=$(git rev-parse --git-dir 2>/dev/null)
 
   # If we're in a worktree, the git-dir will be in .git/worktrees/
   # The main worktree is the parent of the .git directory
@@ -118,13 +123,157 @@ _gtr_get_main_worktree() {
 _gtr_is_initialized() {
   local main_worktree="$(_gtr_get_main_worktree)"
   local global_config_file="$HOME/.gtr/config"
-  local local_config_file="$main_worktree/.gtr/config"
 
-  # Check if either global or local config file exists
-  if [[ -f "$local_config_file" || -f "$global_config_file" ]]; then
+  # If we have a main worktree, check for local config
+  if [[ -n "$main_worktree" ]]; then
+    local local_config_file="$main_worktree/.gtr/config"
+    if [[ -f "$local_config_file" ]]; then
+      return 0  # Initialized
+    fi
+  fi
+
+  # Always check for global config
+  if [[ -f "$global_config_file" ]]; then
     return 0  # Initialized
+  fi
+
+  return 1  # Not initialized
+}
+
+# Find worktrees by name, searching current repo first, then all repos
+# Usage: _gtr_find_worktree_by_name "name"
+# Returns: array of matching worktree paths (newline separated)
+_gtr_find_worktree_by_name() {
+  local name="$1"
+  local matches=()
+  local seen_paths=()
+
+  # First, try to find in current git repo if we're in one
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    local current_repo_matches=()
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^worktree[[:space:]]+(.+)$ ]]; then
+        local worktree_path="${BASH_REMATCH[1]}"
+        local worktree_name=$(basename "$worktree_path")
+        if [[ "$worktree_name" == "$name" ]]; then
+          current_repo_matches+=("$worktree_path")
+          seen_paths+=("$worktree_path")
+        fi
+      fi
+    done < <(git worktree list --porcelain 2>/dev/null)
+
+    # If we found matches in the current repo, return them
+    if [[ ${#current_repo_matches[@]} -gt 0 ]]; then
+      printf '%s\n' "${current_repo_matches[@]}"
+      return 0
+    fi
+  fi
+
+  # Search all common dev directories for worktrees
+  local search_dirs=(
+    "$HOME/dev/worktrees"
+    "$HOME/Documents/dev/worktrees"
+    "$HOME/Projects/worktrees"
+  )
+
+  # Add base_dir if it's different from the common ones
+  local base_dir="$(_gtr_get_base_dir)"
+  local base_in_list=false
+  for search_dir in "${search_dirs[@]}"; do
+    if [[ "$search_dir" == "$base_dir" ]]; then
+      base_in_list=true
+      break
+    fi
+  done
+  if [[ "$base_in_list" == "false" && -d "$base_dir" ]]; then
+    search_dirs+=("$base_dir")
+  fi
+
+  # Search all directories for worktrees with this name
+  # Use a simpler, faster approach: look for directories with the target name
+  for search_dir in "${search_dirs[@]}"; do
+    if [[ -d "$search_dir" ]]; then
+      # Find directories matching the name (max depth 3 to avoid deep scans)
+      while IFS= read -r -d '' potential_match; do
+        # Verify it's actually a git worktree
+        if [[ -d "$potential_match/.git" ]] || git -C "$potential_match" rev-parse --git-dir >/dev/null 2>&1; then
+          # Skip if we've already seen this path
+          local already_seen=false
+          for seen in "${seen_paths[@]}"; do
+            if [[ "$seen" == "$potential_match" ]]; then
+              already_seen=true
+              break
+            fi
+          done
+          if [[ "$already_seen" == "false" ]]; then
+            matches+=("$potential_match")
+            seen_paths+=("$potential_match")
+          fi
+        fi
+      done < <(find "$search_dir" -maxdepth 3 -type d -name "$name" -print0 2>/dev/null)
+    fi
+  done
+
+  if [[ ${#matches[@]} -gt 0 ]]; then
+    printf '%s\n' "${matches[@]}"
+    return 0
+  fi
+
+  return 1
+}
+
+# Select from multiple worktree matches interactively
+# Usage: _gtr_select_from_matches "match1" "match2" ...
+# Returns: selected path on stdout
+_gtr_select_from_matches() {
+  local -a matches=("$@")
+
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    return 1
+  fi
+
+  if [[ ${#matches[@]} -eq 1 ]]; then
+    echo "${matches[0]}"
+    return 0
+  fi
+
+  # Multiple matches - show interactive selection
+  echo "Multiple worktrees found:" >&2
+  local i=1
+  for match in "${matches[@]}"; do
+    # Get repo name from the worktree
+    local repo_name=""
+    if git -C "$match" rev-parse --git-dir >/dev/null 2>&1; then
+      local main_repo=$(git -C "$match" worktree list --porcelain | grep '^worktree ' | head -1 | cut -d' ' -f2)
+      repo_name=$(basename "$main_repo")
+    fi
+
+    if [[ -n "$repo_name" ]]; then
+      echo "  [$i] $match (repo: $repo_name)" >&2
+    else
+      echo "  [$i] $match" >&2
+    fi
+    ((i++))
+  done
+
+  echo "" >&2
+  printf "Select worktree [1-${#matches[@]}]: " >&2
+
+  # Check if stdin is available for interactive input
+  if [[ -t 0 ]]; then
+    read -r selection
   else
-    return 1  # Not initialized
+    # Non-interactive mode - default to first match
+    selection=1
+    echo "1 (non-interactive, using first match)" >&2
+  fi
+
+  if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#matches[@]} ]]; then
+    echo "${matches[$((selection-1))]}"
+    return 0
+  else
+    echo "Invalid selection" >&2
+    return 1
   fi
 }
 
@@ -140,13 +289,20 @@ _gtr_parse_global_flags() {
   local extra_args=()
   local parsing_extra=false
 
+  # Read default values from config (only if we have a main worktree)
+  local config_editor="cursor"
+  local config_run_pnpm="true"
+  local config_auto_open="true"
+  local config_worktree_base=""
+  local config_untracked="true"
 
-  # Read default values from config
-  local config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
-  local config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
-  local config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
-  local config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
-  local config_untracked="$(_gtr_read_config_setting "$main_worktree" "settings" "untracked" "true")"
+  if [[ -n "$main_worktree" ]]; then
+    config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
+    config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
+    config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
+    config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
+    config_untracked="$(_gtr_read_config_setting "$main_worktree" "settings" "untracked" "true")"
+  fi
 
   # Set defaults from config
   editor="$config_editor"

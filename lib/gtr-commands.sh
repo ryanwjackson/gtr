@@ -96,23 +96,43 @@ gtr_cd() {
   fi
 
   if [[ -z "$name" ]]; then
-    echo "Usage: gtr cd <name>"
+    echo "Usage: gtr cd <name>" >&2
     return 1
   fi
 
+  # First try the default worktree path
   local worktree_path="$(_gtr_get_worktree_path "$name")"
 
-  # First check if the worktree directory exists
   if [[ -d "$worktree_path" ]]; then
-    cd "$worktree_path" || { echo "Cannot change to worktree: $worktree_path"; return 1; }
-  # Otherwise check if it's a branch name
-  elif git rev-parse --verify "$name" >/dev/null 2>&1; then
-    local main_worktree="$(_gtr_get_main_worktree)"
-    cd "$main_worktree" || { echo "Cannot change to main worktree: $main_worktree"; return 1; }
-  else
-    echo "No such worktree or branch: $name"
-    return 1
+    echo "$worktree_path"
+    cd "$worktree_path" 2>/dev/null || return 0
+    return 0
   fi
+
+  # Search for worktree by name across all repos
+  local matches=()
+  while IFS= read -r match; do
+    matches+=("$match")
+  done < <(_gtr_find_worktree_by_name "$name")
+
+  if [[ ${#matches[@]} -gt 0 ]]; then
+    local selected_path
+    selected_path=$(_gtr_select_from_matches "${matches[@]}") || return 1
+    echo "$selected_path"
+    cd "$selected_path" 2>/dev/null || return 0
+    return 0
+  fi
+
+  # Check if it's a branch name in current repo
+  if git rev-parse --verify "$name" >/dev/null 2>&1; then
+    local main_worktree="$(_gtr_get_main_worktree)"
+    echo "$main_worktree"
+    cd "$main_worktree" 2>/dev/null || return 0
+    return 0
+  fi
+
+  echo "No such worktree or branch: $name" >&2
+  return 1
 }
 
 gtr_list() {
@@ -134,8 +154,27 @@ gtr_claude() {
     return 1
   fi
 
-  local dir
-  dir=$(_gtr_find_or_create_worktree "$name") || return 1
+  local dir=""
+
+  # First try to find existing worktree
+  local worktree_path="$(_gtr_get_worktree_path "$name")"
+
+  if [[ -d "$worktree_path" ]]; then
+    dir="$worktree_path"
+  else
+    # Search for worktree by name across all repos
+    local matches=()
+    while IFS= read -r match; do
+      matches+=("$match")
+    done < <(_gtr_find_worktree_by_name "$name")
+
+    if [[ ${#matches[@]} -gt 0 ]]; then
+      dir=$(_gtr_select_from_matches "${matches[@]}") || return 1
+    else
+      # If not found, try to create it
+      dir=$(_gtr_find_or_create_worktree "$name") || return 1
+    fi
+  fi
 
   if [[ ${#claude_args[@]} -gt 0 ]]; then
     ( cd "$dir" && claude "${claude_args[@]}" )
@@ -159,8 +198,27 @@ gtr_cursor() {
     return 1
   fi
 
-  local dir
-  dir=$(_gtr_find_or_create_worktree "$name") || return 1
+  local dir=""
+
+  # First try to find existing worktree
+  local worktree_path="$(_gtr_get_worktree_path "$name")"
+
+  if [[ -d "$worktree_path" ]]; then
+    dir="$worktree_path"
+  else
+    # Search for worktree by name across all repos
+    local matches=()
+    while IFS= read -r match; do
+      matches+=("$match")
+    done < <(_gtr_find_worktree_by_name "$name")
+
+    if [[ ${#matches[@]} -gt 0 ]]; then
+      dir=$(_gtr_select_from_matches "${matches[@]}") || return 1
+    else
+      # If not found, try to create it
+      dir=$(_gtr_find_or_create_worktree "$name") || return 1
+    fi
+  fi
 
   if [[ ${#cursor_args[@]} -gt 0 ]]; then
     ( cd "$dir" && cursor "${cursor_args[@]}" )
