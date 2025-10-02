@@ -58,6 +58,30 @@ bash test/actions/test-create.sh
 gtr --version  # This uses the system-installed version via brew
 ```
 
+### Shell Integration (for `gtr cd` to work)
+The `gtr cd` command requires shell integration to change your current shell's directory. Add this to your shell config:
+
+**Bash (~/.bashrc):**
+```bash
+source /path/to/gtr/shell/gtr-shell.sh
+```
+
+**Zsh (~/.zshrc):**
+```zsh
+source /path/to/gtr/shell/gtr-shell.zsh
+```
+
+Or if gtr is installed via Homebrew:
+```bash
+# Bash
+source $(brew --prefix gtr)/shell/gtr-shell.sh
+
+# Zsh
+source $(brew --prefix gtr)/shell/gtr-shell.zsh
+```
+
+This wrapper intercepts `gtr cd` commands and executes the directory change in the current shell.
+
 ### Release Management
 ```bash
 # Create and publish a new release
