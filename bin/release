@@ -375,9 +375,9 @@ if [[ "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; the
 
 This PR is set to auto-merge once CI passes."
 
-  # Use the bin/pr utility to create/update the PR with auto-merge (enabled by default)
+  # Use the bin/pr utility to create/update the PR with auto-merge enabled
   echo "Using bin/pr to create/update PR with auto-merge..."
-  if "$(dirname "$0")/pr" --base "$main_branch" --head "$current_branch" "$pr_title" "$pr_body"; then
+  if "$(dirname "$0")/pr" --draft=false --auto-merge --base "$main_branch" --head "$current_branch" "$pr_title" "$pr_body"; then
     echo "✅ PR handled successfully via bin/pr"
   else
     echo "❌ Failed to handle PR via bin/pr"

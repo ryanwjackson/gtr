@@ -50,8 +50,10 @@ Arguments:
   body                 PR body (optional, defaults to simple description)
 
 Options:
-  --auto-merge         Enable auto-merge with squash strategy (default: enabled)
-  --no-auto-merge      Disable auto-merge
+  --draft              Create PR as draft (default: true)
+  --draft=false        Create PR as ready for review (not draft)
+  --auto-merge         Enable auto-merge with squash strategy (default: disabled)
+  --no-auto-merge      Disable auto-merge (default)
   --base <branch>      Base branch for the PR (defaults to main/master)
   --head <branch>      Head branch for the PR (defaults to current branch)
   -h, --help           Show this help
@@ -61,20 +63,23 @@ Environment:
 
 Behavior:
   - Pushes current branch to remote if not already pushed
-  - Creates new PR if none exists for the branch
+  - Creates new PR if none exists for the branch (as draft by default)
   - Updates existing PR if one exists for the branch
   - Optionally enables auto-merge with squash strategy
   - Automatically marks draft PRs as ready for review before enabling auto-merge
 
 Examples:
-  # Simple PR creation/update with default title and body (auto-merge enabled)
+  # Simple PR creation/update as draft (default behavior)
   bin/pr
 
-  # PR with custom title (auto-merge enabled by default)
+  # PR with custom title (still draft by default)
   bin/pr "Fix user authentication bug"
 
-  # PR without auto-merge
-  bin/pr --no-auto-merge "Draft feature implementation"
+  # PR ready for review (not draft)
+  bin/pr --draft=false "Ready feature implementation"
+
+  # PR with auto-merge enabled
+  bin/pr --auto-merge "Feature ready to merge"
 
   # PR with custom title and body
   bin/pr "Feature: Add dark mode" "Implements dark mode toggle in settings"
@@ -84,7 +89,8 @@ Examples:
 USAGE
 }
 
-auto_merge=true
+auto_merge=false
+draft=true
 base_branch=""
 head_branch=""
 title=""
@@ -92,6 +98,14 @@ body=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --draft)
+      draft=true
+      shift
+      ;;
+    --draft=false)
+      draft=false
+      shift
+      ;;
     --auto-merge)
       auto_merge=true
       shift
@@ -287,48 +301,59 @@ else
   echo "Creating new PR to merge $head_branch into $base_branch"
 
   # Create the PR
-  if gh pr create --title "$title" --body "$body" --base "$base_branch" --head "$head_branch" 2>/dev/null; then
-    echo "✅ PR created successfully"
-
-    # Handle auto-merge if requested
-    if [[ "$auto_merge" == "true" ]]; then
-      # Get the PR number
-      pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
-      if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
-        # Check if PR is in draft state and mark as ready for review if needed
-        if [[ "$(is_pr_draft "$pr_number")" == "true" ]]; then
-          echo "📝 PR #$pr_number is in draft state, marking as ready for review..."
-          if mark_pr_ready "$pr_number"; then
-            echo "✅ PR #$pr_number is now ready for review"
-          else
-            echo "⚠️  PR #$pr_number could not be marked as ready for review, but auto-merge may still work"
-          fi
-        else
-          echo "✅ PR #$pr_number is already ready for review"
-        fi
-        
-        if gh pr merge "$pr_number" --auto --squash 2>/dev/null; then
-          echo "✅ Auto-merge enabled for PR #$pr_number"
-          echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
-        else
-          echo "⚠️  PR created but auto-merge could not be enabled. You may need to enable it manually."
-          echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
-        fi
-      else
-        echo "⚠️  PR created but could not retrieve PR number for auto-merge setup"
-      fi
+  if [[ "$draft" == "true" ]]; then
+    if gh pr create --title "$title" --body "$body" --base "$base_branch" --head "$head_branch" --draft 2>/dev/null; then
+      echo "✅ Draft PR created successfully"
     else
-      # Just show the PR URL
-      pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
-      if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
-        echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
-      fi
+      echo "❌ Failed to create draft PR. You may need to create it manually."
+      echo "💡 Suggested command:"
+      echo "   gh pr create --title \"$title\" --body \"$body\" --base \"$base_branch\" --head \"$head_branch\" --draft"
+      exit 1
     fi
   else
-    echo "❌ Failed to create PR. You may need to create it manually."
-    echo "💡 Suggested command:"
-    echo "   gh pr create --title \"$title\" --body \"$body\" --base \"$base_branch\" --head \"$head_branch\""
-    exit 1
+    if gh pr create --title "$title" --body "$body" --base "$base_branch" --head "$head_branch" 2>/dev/null; then
+      echo "✅ PR created successfully"
+    else
+      echo "❌ Failed to create PR. You may need to create it manually."
+      echo "💡 Suggested command:"
+      echo "   gh pr create --title \"$title\" --body \"$body\" --base \"$base_branch\" --head \"$head_branch\""
+      exit 1
+    fi
+  fi
+
+  # Handle auto-merge if requested
+  if [[ "$auto_merge" == "true" ]]; then
+    # Get the PR number
+    pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
+    if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+      # Check if PR is in draft state and mark as ready for review if needed
+      if [[ "$(is_pr_draft "$pr_number")" == "true" ]]; then
+        echo "📝 PR #$pr_number is in draft state, marking as ready for review..."
+        if mark_pr_ready "$pr_number"; then
+          echo "✅ PR #$pr_number is now ready for review"
+        else
+          echo "⚠️  PR #$pr_number could not be marked as ready for review, but auto-merge may still work"
+        fi
+      else
+        echo "✅ PR #$pr_number is already ready for review"
+      fi
+      
+      if gh pr merge "$pr_number" --auto --squash 2>/dev/null; then
+        echo "✅ Auto-merge enabled for PR #$pr_number"
+        echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+      else
+        echo "⚠️  PR created but auto-merge could not be enabled. You may need to enable it manually."
+        echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+      fi
+    else
+      echo "⚠️  PR created but could not retrieve PR number for auto-merge setup"
+    fi
+  else
+    # Just show the PR URL
+    pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
+    if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+      echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
+    fi
   fi
 fi
 
