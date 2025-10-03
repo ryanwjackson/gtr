@@ -170,3 +170,87 @@ _gtr_execute_post_open_hook() {
   
   _gtr_execute_hook "post-open" "$hooks_dir" "$gtr_action" "$worktree_name" "$worktree_path" "$editor"
 }
+
+_gtr_check_hooks() {
+  local main_worktree="$1"
+  local worktree_path="$2"
+  local -n missing_hooks_ref="$3"
+  local -n different_hooks_ref="$4"
+  
+  local global_hooks_dir="$HOME/.gtr/hooks"
+  local local_hooks_dir="$main_worktree/.gtr/hooks"
+  local worktree_hooks_dir="$worktree_path/.gtr/hooks"
+  
+  # Determine which hooks directory to use as source
+  local source_hooks_dir=""
+  if [[ -d "$local_hooks_dir" ]]; then
+    source_hooks_dir="$local_hooks_dir"
+  elif [[ -d "$global_hooks_dir" ]]; then
+    source_hooks_dir="$global_hooks_dir"
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    return 0  # No hooks to check
+  fi
+  
+  # Check each hook in the source directory
+  for hook_file in "$source_hooks_dir"/*; do
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file")"
+      local worktree_hook="$worktree_hooks_dir/$hook_name"
+      
+      if [[ ! -f "$worktree_hook" ]]; then
+        missing_hooks_ref+=("$hook_name")
+      elif _gtr_files_different "$hook_file" "$worktree_hook"; then
+        different_hooks_ref+=("$hook_name")
+      fi
+    fi
+  done
+}
+
+_gtr_copy_hooks_to_worktree() {
+  local main_worktree="$1"
+  local worktree_path="$2"
+  
+  local global_hooks_dir="$HOME/.gtr/hooks"
+  local local_hooks_dir="$main_worktree/.gtr/hooks"
+  local worktree_hooks_dir="$worktree_path/.gtr/hooks"
+  
+  # Determine which hooks directory to use as source
+  local source_hooks_dir=""
+  if [[ -d "$local_hooks_dir" ]]; then
+    source_hooks_dir="$local_hooks_dir"
+  elif [[ -d "$global_hooks_dir" ]]; then
+    source_hooks_dir="$global_hooks_dir"
+  fi
+  
+  if [[ -z "$source_hooks_dir" || ! -d "$source_hooks_dir" ]]; then
+    return 0  # No hooks to copy
+  fi
+  
+  # Create hooks directory in worktree
+  if [[ ! -d "$worktree_hooks_dir" ]]; then
+    mkdir -p "$worktree_hooks_dir"
+  fi
+  
+  # Copy each hook
+  local copied_hooks=()
+  for hook_file in "$source_hooks_dir"/*; do
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+      local hook_name="$(basename "$hook_file")"
+      local worktree_hook="$worktree_hooks_dir/$hook_name"
+      
+      if cp "$hook_file" "$worktree_hook" 2>/dev/null; then
+        chmod +x "$worktree_hook" 2>/dev/null
+        copied_hooks+=("$hook_name")
+      fi
+    fi
+  done
+  
+  if [[ ${#copied_hooks[@]} -gt 0 ]]; then
+    echo "  📋 Copied hooks:"
+    for hook in "${copied_hooks[@]}"; do
+      echo "    - $hook"
+    done
+  fi
+}

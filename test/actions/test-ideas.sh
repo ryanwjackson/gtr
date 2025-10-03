@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/../../lib/gtr-ui.sh"
 source "$SCRIPT_DIR/../../lib/gtr-config.sh"
 source "$SCRIPT_DIR/../../lib/gtr-files.sh"
 source "$SCRIPT_DIR/../../lib/gtr-git.sh"
-source "$SCRIPT_DIR/../../lib/gtr-commands.sh"
+source "$SCRIPT_DIR/../../lib/gtr-ideas.sh"
 
 # Test configuration
 TEST_DIR=""
