@@ -199,7 +199,7 @@ INI-like sections in your main repository:
 
 - **[files_to_copy]**: glob patterns copied into new worktrees
   - defaults: `.env*local*`, `.env.*local*`, `.claude/`, `.anthropic/`
-- **[settings]**: `editor`, `prefix`, `run_pnpm`, `auto_open`, optional `worktree_base`
+- **[settings]**: `editor`, `prefix`, `auto_open`, optional `worktree_base`
 - **[doctor]**: `show_detailed_diffs`, `auto_fix`
 
 ### Environment

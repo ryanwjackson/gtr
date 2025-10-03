@@ -47,6 +47,44 @@ bump_version() {
   echo "v$major.$minor.$patch"
 }
 
+# Function to check if a PR is in draft state
+is_pr_draft() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "false"
+    return
+  fi
+  
+  local draft_status
+  draft_status=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null)
+  
+  if [[ "$draft_status" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# Function to mark a draft PR as ready for review
+mark_pr_ready() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "Error: No PR number provided" >&2
+    return 1
+  fi
+  
+  echo "🔄 Marking draft PR #$pr_number as ready for review..."
+  if gh pr ready "$pr_number" 2>/dev/null; then
+    echo "✅ PR #$pr_number marked as ready for review"
+    return 0
+  else
+    echo "⚠️  Could not mark PR #$pr_number as ready for review"
+    return 1
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bin/release [options] <version>
@@ -293,18 +331,22 @@ else
   echo "Release $tag created"
 fi
 
-# If we're in a worktree and not on the main branch, create a PR with auto-merge
-if [[ "$is_worktree" == "true" && "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
-  echo "Detected worktree release from branch $current_branch (not $main_branch)"
+# If we're not on the main branch, create a PR with auto-merge
+if [[ "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
+  if [[ "$is_worktree" == "true" ]]; then
+    echo "Detected worktree release from branch $current_branch (not $main_branch)"
+  else
+    echo "Detected release from branch $current_branch (not $main_branch)"
+  fi
 
   # Create PR title and body
-  pr_title="Release $tag from worktree"
-  pr_body="This PR merges the release $tag from worktree branch \`$current_branch\` into \`$main_branch\`.
+  pr_title="Release $tag from $current_branch"
+  pr_body="This PR merges the release $tag from branch \`$current_branch\` into \`$main_branch\`.
 
 **Release Details:**
 - Tag: \`$tag\`
 - Release Notes: $notes
-- Created from worktree branch: \`$current_branch\`
+- Created from branch: \`$current_branch\`
 
 This PR is set to auto-merge once CI passes."
 

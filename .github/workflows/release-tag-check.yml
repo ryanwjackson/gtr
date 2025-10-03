@@ -17,33 +17,54 @@ jobs:
         # Fetch all history and tags to properly check for release tags
         fetch-depth: 0
 
-    - name: Check for release tag on PR head
+    - name: Check for release tag in PR (informational only)
       run: |
         # Get the head commit of the PR
         head_commit=$(git rev-parse HEAD)
         echo "PR head commit: $head_commit"
-
+        
+        # Get the base commit (target branch)
+        base_commit="${{ github.event.pull_request.base.sha }}"
+        echo "PR base commit: $base_commit"
+        
         # Check if there's a release tag pointing to the head commit
-        release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
-
-        if [[ -z "$release_tags" ]]; then
-          echo "❌ No release tag found on the latest commit of this PR."
+        head_release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
+        
+        # If no tag on head, check for tags in the PR's commit range
+        if [[ -z "$head_release_tags" ]]; then
+          echo "No release tag found on HEAD commit, checking PR commit range..."
+          
+          # Get all commits in the PR (from base to head)
+          pr_commits=$(git rev-list "$base_commit..$head_commit" || true)
+          
+          if [[ -n "$pr_commits" ]]; then
+            echo "Checking for release tags in PR commits:"
+            for commit in $pr_commits; do
+              commit_tags=$(git tag -l 'v*.*.*' --points-at "$commit" || true)
+              if [[ -n "$commit_tags" ]]; then
+                echo "✅ Found release tag(s) on commit $commit:"
+                echo "$commit_tags"
+                head_release_tags="$commit_tags"
+                break
+              fi
+            done
+          fi
+        fi
+        
+        if [[ -z "$head_release_tags" ]]; then
+          echo "ℹ️  No release tag found in this PR."
           echo ""
-          echo "This PR cannot be merged into main without a release tag on the latest commit."
-          echo "To fix this:"
-          echo "1. Create a release tag on the latest commit: git tag v1.2.3"
-          echo "2. Push the tag: git push origin v1.2.3"
-          echo "3. Or use the bin/release script to create a proper release"
+          echo "This is informational only. Release tags are not required for development PRs."
+          echo "When ready to release, use the bin/release script to create a proper release."
           echo ""
           echo "Available tags on recent commits:"
           git log --oneline --decorate -10 || true
-          exit 1
         else
-          echo "✅ Found release tag(s) on the latest commit:"
-          echo "$release_tags"
-
+          echo "✅ Found release tag(s) in this PR:"
+          echo "$head_release_tags"
+          
           # Validate that it's a proper semantic version tag
-          for tag in $release_tags; do
+          for tag in $head_release_tags; do
             if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "✅ Valid semantic version tag: $tag"
             else
@@ -69,8 +90,25 @@ jobs:
     - name: Verify release tag integrity
       run: |
         head_commit=$(git rev-parse HEAD)
+        base_commit="${{ github.event.pull_request.base.sha }}"
+        
+        # Find release tags in the PR (same logic as the main check)
         release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
-
+        
+        if [[ -z "$release_tags" ]]; then
+          # Check for tags in the PR's commit range
+          pr_commits=$(git rev-list "$base_commit..$head_commit" || true)
+          if [[ -n "$pr_commits" ]]; then
+            for commit in $pr_commits; do
+              commit_tags=$(git tag -l 'v*.*.*' --points-at "$commit" || true)
+              if [[ -n "$commit_tags" ]]; then
+                release_tags="$commit_tags"
+                break
+              fi
+            done
+          fi
+        fi
+        
         if [[ -n "$release_tags" ]]; then
           for tag in $release_tags; do
             # Check if tag exists on remote
@@ -79,7 +117,7 @@ jobs:
             else
               echo "⚠️  Tag $tag exists locally but not on remote - this may cause issues"
             fi
-
+            
             # Check if it's an annotated tag (preferred for releases)
             if git cat-file -t "$tag" | grep -q "tag"; then
               echo "✅ Tag $tag is an annotated tag (preferred for releases)"
@@ -87,4 +125,6 @@ jobs:
               echo "ℹ️  Tag $tag is a lightweight tag (annotated tags are preferred for releases)"
             fi
           done
+        else
+          echo "ℹ️  No release tags found to verify"
         fi

@@ -46,8 +46,6 @@ test_gtr_read_config_setting() {
   local editor=$(_gtr_read_config_setting "$TEST_TEMP_DIR" "settings" "editor" "default")
   assert_equals "test-editor" "$editor" "Should read editor setting"
 
-  local run_pnpm=$(_gtr_read_config_setting "$TEST_TEMP_DIR" "settings" "run_pnpm" "false")
-  assert_equals "true" "$run_pnpm" "Should read run_pnpm setting"
 
   local nonexistent=$(_gtr_read_config_setting "$TEST_TEMP_DIR" "settings" "nonexistent" "default")
   assert_equals "default" "$nonexistent" "Should return default for nonexistent setting"
@@ -133,7 +131,6 @@ test_config_precedence() {
   cat > "$global_config_dir/config" << 'EOF'
 [settings]
 editor=global-editor
-run_pnpm=false
 EOF
 
   # Create local config
@@ -149,8 +146,6 @@ EOF
   assert_equals "local-editor" "$editor" "Local config should override global"
 
   # Global should be used when local doesn't have setting
-  local run_pnpm=$(_gtr_read_config_setting "$TEST_TEMP_DIR" "settings" "run_pnpm" "default")
-  assert_equals "false" "$run_pnpm" "Should fall back to global config"
 
   # Restore original HOME
   export HOME="$original_home"

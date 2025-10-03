@@ -26,7 +26,20 @@ source_module "gtr-config.sh"   # Configuration management (depends on gtr-ui.sh
 source_module "gtr-files.sh"    # File operations (depends on gtr-config.sh, gtr-ui.sh)
 source_module "gtr-hooks.sh"    # Hook execution (depends on gtr-core.sh)
 source_module "gtr-git.sh"      # Git operations (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh, gtr-hooks.sh)
-source_module "gtr-commands.sh" # Command implementations (depends on all above)
+source_module "gtr-ideas.sh"    # Idea management (depends on gtr-core.sh, gtr-config.sh, gtr-files.sh, gtr-ui.sh)
+
+# Source individual command files
+source_module "gtr-create.sh"   # Create worktree command
+source_module "gtr-remove.sh"   # Remove worktree command
+source_module "gtr-cd.sh"       # Change directory command
+source_module "gtr-list.sh"     # List worktrees command
+source_module "gtr-claude.sh"   # Run claude in worktree command
+source_module "gtr-cursor.sh"   # Run cursor in worktree command
+source_module "gtr-prune.sh"    # Prune merged worktrees command
+source_module "gtr-init.sh"     # Initialize configuration command
+source_module "gtr-doctor.sh"   # Check and fix worktree files command
+source_module "gtr-generate.sh" # Generate hooks and resources command
+source_module "gtr-commands.sh" # Command dispatcher (depends on all above)
 
 # Main gtr function - dispatches to appropriate sub-commands
 gtr() {

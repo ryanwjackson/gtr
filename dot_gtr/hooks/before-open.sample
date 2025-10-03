@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# before-open.sample - Hook executed before opening a worktree in the editor
+# This hook runs before the editor is launched to open a worktree
+#
+# Arguments passed to this hook:
+# $1 - gtr action (e.g., "create", "cd", etc.)
+# $2 - worktree name
+# $3 - worktree path
+# $4 - editor command
+#
+# Environment variables available:
+# - GTR_EDITOR: The editor being used
+# - GTR_NO_OPEN: Whether opening is disabled
+# - GTR_BASE_DIR: Base directory for worktrees
+#
+# To enable this hook:
+# 1. Copy this file: cp .gtr/hooks/before-open.sample .gtr/hooks/before-open
+# 2. Make executable: chmod +x .gtr/hooks/before-open
+# 3. Edit the hook to add your custom logic
+
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
+
+# Initialize gtr context
+gtr_init_context "$@"
+
+# Example: Only run for create action
+if gtr_is_action "create"; then
+  gtr_log "Preparing to open new worktree: $GTR_WORKTREE_NAME"
+  echo "   Path: $GTR_WORKTREE_PATH"
+  echo "   Editor: $GTR_EDITOR"
+  
+  # Example: Copy specific files before opening
+  # copy_to_worktree "apps/web/.env.local"
+  # copy_to_worktree "**/.env.*local*"
+  
+  # Add your custom logic here
+  # For example, you might want to:
+  # - Set up environment variables
+  # - Run pre-checks
+  # - Configure the worktree before opening
+fi
+
+# Example: Run for all actions
+# gtr_log "About to open worktree: $GTR_WORKTREE_NAME"
+# echo "   Action: $GTR_ACTION"
+# echo "   Path: $GTR_WORKTREE_PATH"
+# echo "   Editor: $GTR_EDITOR"
+
+exit 0

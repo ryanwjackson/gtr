@@ -59,32 +59,6 @@ _gtr_copy_local_files() {
   fi
 }
 
-_gtr_run_pnpm_commands() {
-  local worktree_dir="$1"
-  local no_install="$2"
-
-  if [[ "$no_install" == "true" ]]; then
-    echo "⏭️  Skipping pnpm commands (--no-install specified)"
-    return 0
-  fi
-
-  if [[ -f "$worktree_dir/package.json" ]]; then
-    echo "📦 Running pnpm commands in worktree..."
-
-    # Run pnpm approve-builds
-    if command -v pnpm >/dev/null 2>&1; then
-      echo "  Running pnpm approve-builds..."
-      (cd "$worktree_dir" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
-
-      echo "  Running pnpm install..."
-      (cd "$worktree_dir" && pnpm install) || echo "  ⚠️  pnpm install failed"
-    else
-      echo "  ⚠️  pnpm not found, skipping pnpm commands"
-    fi
-  else
-    echo "ℹ️  No package.json found, skipping pnpm commands"
-  fi
-}
 
 _gtr_files_different() {
   local file1="$1"

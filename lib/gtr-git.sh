@@ -45,15 +45,8 @@ _gtr_find_or_create_worktree() {
       if git worktree add "$dir" -b "$branch_name" "$base_branch"; then
         echo "✅ Created worktree '$name'"
 
-        # Copy local files from main worktree to new worktree (only if we have files to copy)
-        local main_worktree="$(_gtr_get_main_worktree)"
-        local patterns=($(_gtr_read_config "$main_worktree"))
-        if [[ ${#patterns[@]} -gt 0 ]]; then
-          _gtr_copy_local_files "$main_worktree" "$dir" "true" "$main_worktree"
-        fi
+        # File copying is now handled by the post-create hook
 
-        # Run pnpm commands if not disabled
-        _gtr_run_pnpm_commands "$dir" "${_GTR_NO_INSTALL:-false}"
 
         echo "$dir"
         return 0
@@ -181,21 +174,21 @@ _gtr_create_worktree() {
       echo "  ℹ️  Files copied to worktree. Git states (staged/modified) will need to be recreated manually."
     fi
 
-    # Copy local files from main worktree to new worktree (only if we have files to copy)
-    local patterns=($(_gtr_read_config "$main_worktree"))
-    if [[ ${#patterns[@]} -gt 0 ]]; then
-      _gtr_copy_local_files "$main_worktree" "$worktree_path" "true" "$main_worktree"
-    fi
+    # File copying is now handled by the post-create hook
 
-    # Run pnpm commands if not disabled
-    _gtr_run_pnpm_commands "$worktree_path" "$_GTR_NO_INSTALL"
 
     # Execute post-create hook
     _gtr_execute_post_create_hook "$name" "$worktree_path" "$branch_name" "$base_branch" "$main_worktree"
 
     if [[ "$_GTR_NO_OPEN" == "false" ]]; then
+      # Execute before-open hook
+      _gtr_execute_before_open_hook "$name" "$worktree_path" "$_GTR_EDITOR" "create" "$main_worktree"
+      
       echo "Opening '$worktree_path' with $_GTR_EDITOR"
       $_GTR_EDITOR "$worktree_path"
+      
+      # Execute post-open hook
+      _gtr_execute_post_open_hook "$name" "$worktree_path" "$_GTR_EDITOR" "create" "$main_worktree"
     else
       echo "Worktree ready at '$worktree_path'"
     fi

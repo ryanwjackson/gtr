@@ -14,8 +14,6 @@ editor=cursor
 # Default branch prefix for worktrees
 prefix=claude
 
-# Whether to run pnpm commands by default (moved to post-create hook)
-# run_pnpm=true
 
 # Whether to open editor after creating worktree
 auto_open=true
