@@ -80,8 +80,21 @@ jobs:
             base_commit="${{ github.event.pull_request.base.sha }}"
             echo "Checking for release tags in commits from $base_commit to $head_commit"
             
-            # Check if there's a release tag pointing to any commit in the PR range
-            release_tags=$(git tag -l 'v*.*.*' --points-at "$base_commit..$head_commit" || true)
+            # Get all commits in the PR by finding the merge base
+            merge_base=$(git merge-base "$base_commit" "$head_commit" || echo "$base_commit")
+            echo "Merge base: $merge_base"
+            
+            # Check if there's a release tag pointing to any commit in the PR
+            # We'll check each commit individually since git range syntax can be problematic
+            release_tags=""
+            for commit in $(git rev-list "$merge_base..$head_commit" 2>/dev/null || git rev-list "$head_commit" --not "$base_commit" 2>/dev/null || echo "$head_commit"); do
+              commit_tags=$(git tag -l 'v*.*.*' --points-at "$commit" 2>/dev/null || true)
+              if [[ -n "$commit_tags" ]]; then
+                release_tags="$release_tags $commit_tags"
+              fi
+            done
+            # Remove duplicates and trim whitespace
+            release_tags=$(echo "$release_tags" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           else
             # For branch pushes, check the head commit
             release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
