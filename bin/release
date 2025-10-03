@@ -331,18 +331,22 @@ else
   echo "Release $tag created"
 fi
 
-# If we're in a worktree and not on the main branch, create a PR with auto-merge
-if [[ "$is_worktree" == "true" && "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
-  echo "Detected worktree release from branch $current_branch (not $main_branch)"
+# If we're not on the main branch, create a PR with auto-merge
+if [[ "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
+  if [[ "$is_worktree" == "true" ]]; then
+    echo "Detected worktree release from branch $current_branch (not $main_branch)"
+  else
+    echo "Detected release from branch $current_branch (not $main_branch)"
+  fi
 
   # Create PR title and body
-  pr_title="Release $tag from worktree"
-  pr_body="This PR merges the release $tag from worktree branch \`$current_branch\` into \`$main_branch\`.
+  pr_title="Release $tag from $current_branch"
+  pr_body="This PR merges the release $tag from branch \`$current_branch\` into \`$main_branch\`.
 
 **Release Details:**
 - Tag: \`$tag\`
 - Release Notes: $notes
-- Created from worktree branch: \`$current_branch\`
+- Created from branch: \`$current_branch\`
 
 This PR is set to auto-merge once CI passes."
 
