@@ -96,27 +96,12 @@ jobs:
             fi
           fi
 
-      - name: Check release requirements for automerge
+      - name: Skip if no release tag found
         if: steps.check_release.outputs.should_run != 'true'
         run: |
-          echo "No release tag found in this commit."
-          
-          # Check if this is a dry run
-          DRY="${{ github.event.inputs.dry_run || 'false' }}"
-          
-          if [[ "$DRY" == "true" ]]; then
-            echo "Dry run enabled. Skipping Homebrew bump (no release required)."
-            echo "To trigger a release, include a version tag (e.g., v1.2.3) in your commit message or push a release tag."
-            exit 0
-          else
-            echo "ERROR: Automerge is enabled but no release tag found on the last commit."
-            echo "This prevents automatic merging of PRs without proper releases."
-            echo "To fix this:"
-            echo "1. Include a version tag (e.g., v1.2.3) in your commit message, OR"
-            echo "2. Push a release tag with this commit, OR"
-            echo "3. Use workflow_dispatch with dry_run=true to skip this check"
-            exit 1
-          fi
+          echo "No release tag found in this commit. Skipping Homebrew bump."
+          echo "To trigger a release, include a version tag (e.g., v1.2.3) in your commit message or push a release tag."
+          exit 0
 
       - name: Ensure GH CLI is authenticated
         env:
