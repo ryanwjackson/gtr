@@ -150,7 +150,7 @@ test_gtr_execute_pre_create_hook() {
   # Create a pre-create hook
   cat > "$hooks_dir/pre-create" << 'EOF'
 #!/bin/bash
-echo "Pre-create hook: $1 $2 $3 $4"
+echo "Pre-create hook: $1 $2 $3 $4 $5"
 exit 0
 EOF
   chmod +x "$hooks_dir/pre-create"
@@ -160,7 +160,7 @@ EOF
   output=$(_gtr_execute_pre_create_hook "test-worktree" "/path/to/worktree" "test-branch" "main" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: pre-create" "Should show hook execution message"
-  assert_contains "$output" "Pre-create hook: test-worktree /path/to/worktree test-branch main" "Should show hook output"
+  assert_contains "$output" "Pre-create hook: create test-worktree /path/to/worktree test-branch main" "Should show hook output"
 }
 
 # Test post-create hook execution
@@ -172,7 +172,7 @@ test_gtr_execute_post_create_hook() {
   # Create a post-create hook
   cat > "$hooks_dir/post-create" << 'EOF'
 #!/bin/bash
-echo "Post-create hook: $1 $2 $3 $4"
+echo "Post-create hook: $1 $2 $3 $4 $5"
 exit 0
 EOF
   chmod +x "$hooks_dir/post-create"
@@ -182,7 +182,7 @@ EOF
   output=$(_gtr_execute_post_create_hook "test-worktree" "/path/to/worktree" "test-branch" "main" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: post-create" "Should show hook execution message"
-  assert_contains "$output" "Post-create hook: test-worktree /path/to/worktree test-branch main" "Should show hook output"
+  assert_contains "$output" "Post-create hook: create test-worktree /path/to/worktree test-branch main" "Should show hook output"
 }
 
 # Test pre-remove hook execution
@@ -194,7 +194,7 @@ test_gtr_execute_pre_remove_hook() {
   # Create a pre-remove hook
   cat > "$hooks_dir/pre-remove" << 'EOF'
 #!/bin/bash
-echo "Pre-remove hook: $1 $2 $3 $4 $5"
+echo "Pre-remove hook: $1 $2 $3 $4 $5 $6"
 exit 0
 EOF
   chmod +x "$hooks_dir/pre-remove"
@@ -204,7 +204,7 @@ EOF
   output=$(_gtr_execute_pre_remove_hook "test-worktree" "/path/to/worktree" "test-branch" "false" "false" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: pre-remove" "Should show hook execution message"
-  assert_contains "$output" "Pre-remove hook: test-worktree /path/to/worktree test-branch false false" "Should show hook output"
+  assert_contains "$output" "Pre-remove hook: remove test-worktree /path/to/worktree test-branch false false" "Should show hook output"
 }
 
 # Test post-remove hook execution
@@ -216,7 +216,7 @@ test_gtr_execute_post_remove_hook() {
   # Create a post-remove hook
   cat > "$hooks_dir/post-remove" << 'EOF'
 #!/bin/bash
-echo "Post-remove hook: $1 $2 $3 $4 $5"
+echo "Post-remove hook: $1 $2 $3 $4 $5 $6"
 exit 0
 EOF
   chmod +x "$hooks_dir/post-remove"
@@ -226,7 +226,7 @@ EOF
   output=$(_gtr_execute_post_remove_hook "test-worktree" "/path/to/worktree" "test-branch" "false" "false" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: post-remove" "Should show hook execution message"
-  assert_contains "$output" "Post-remove hook: test-worktree /path/to/worktree test-branch false false" "Should show hook output"
+  assert_contains "$output" "Post-remove hook: remove test-worktree /path/to/worktree test-branch false false" "Should show hook output"
 }
 
 # Test pre-prune hook execution
@@ -238,7 +238,7 @@ test_gtr_execute_pre_prune_hook() {
   # Create a pre-prune hook
   cat > "$hooks_dir/pre-prune" << 'EOF'
 #!/bin/bash
-echo "Pre-prune hook: $1 $2 $3"
+echo "Pre-prune hook: $1 $2 $3 $4"
 exit 0
 EOF
   chmod +x "$hooks_dir/pre-prune"
@@ -248,7 +248,7 @@ EOF
   output=$(_gtr_execute_pre_prune_hook "main" "false" "false" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: pre-prune" "Should show hook execution message"
-  assert_contains "$output" "Pre-prune hook: main false false" "Should show hook output"
+  assert_contains "$output" "Pre-prune hook: prune main false false" "Should show hook output"
 }
 
 # Test post-prune hook execution
@@ -260,7 +260,7 @@ test_gtr_execute_post_prune_hook() {
   # Create a post-prune hook
   cat > "$hooks_dir/post-prune" << 'EOF'
 #!/bin/bash
-echo "Post-prune hook: $1 $2 $3"
+echo "Post-prune hook: $1 $2 $3 $4"
 exit 0
 EOF
   chmod +x "$hooks_dir/post-prune"
@@ -270,7 +270,51 @@ EOF
   output=$(_gtr_execute_post_prune_hook "main" "false" "false" "$main_worktree" 2>&1)
   
   assert_contains "$output" "Executing hook: post-prune" "Should show hook execution message"
-  assert_contains "$output" "Post-prune hook: main false false" "Should show hook output"
+  assert_contains "$output" "Post-prune hook: prune main false false" "Should show hook output"
+}
+
+# Test before-open hook execution
+test_gtr_execute_before_open_hook() {
+  local main_worktree="$TEST_TEMP_DIR"
+  local hooks_dir="$main_worktree/.gtr/hooks"
+  mkdir -p "$hooks_dir"
+  
+  # Create a before-open hook
+  cat > "$hooks_dir/before-open" << 'EOF'
+#!/bin/bash
+echo "Before-open hook: $1 $2 $3 $4"
+exit 0
+EOF
+  chmod +x "$hooks_dir/before-open"
+  
+  # Capture output
+  local output
+  output=$(_gtr_execute_before_open_hook "test-worktree" "/path/to/worktree" "cursor" "create" "$main_worktree" 2>&1)
+  
+  assert_contains "$output" "Executing hook: before-open" "Should show hook execution message"
+  assert_contains "$output" "Before-open hook: create test-worktree /path/to/worktree cursor" "Should show hook output"
+}
+
+# Test post-open hook execution
+test_gtr_execute_post_open_hook() {
+  local main_worktree="$TEST_TEMP_DIR"
+  local hooks_dir="$main_worktree/.gtr/hooks"
+  mkdir -p "$hooks_dir"
+  
+  # Create a post-open hook
+  cat > "$hooks_dir/post-open" << 'EOF'
+#!/bin/bash
+echo "Post-open hook: $1 $2 $3 $4"
+exit 0
+EOF
+  chmod +x "$hooks_dir/post-open"
+  
+  # Capture output
+  local output
+  output=$(_gtr_execute_post_open_hook "test-worktree" "/path/to/worktree" "cursor" "create" "$main_worktree" 2>&1)
+  
+  assert_contains "$output" "Executing hook: post-open" "Should show hook execution message"
+  assert_contains "$output" "Post-open hook: create test-worktree /path/to/worktree cursor" "Should show hook output"
 }
 
 # Test hook execution with no hooks directory
@@ -363,6 +407,8 @@ run_tests() {
   register_test "execute_post_remove_hook" test_gtr_execute_post_remove_hook
   register_test "execute_pre_prune_hook" test_gtr_execute_pre_prune_hook
   register_test "execute_post_prune_hook" test_gtr_execute_post_prune_hook
+  register_test "execute_before_open_hook" test_gtr_execute_before_open_hook
+  register_test "execute_post_open_hook" test_gtr_execute_post_open_hook
   register_test "execute_hook_no_directory" test_gtr_execute_hook_no_directory
   register_test "execute_hook_empty_directory" test_gtr_execute_hook_empty_directory
   register_test "execute_hook_non_executable_file" test_gtr_execute_hook_non_executable_file

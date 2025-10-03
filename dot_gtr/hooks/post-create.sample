@@ -33,8 +33,8 @@ echo "📋 Copying local files to worktree..."
 
 # File patterns to copy (customize as needed)
 FILE_PATTERNS=(
-    ".env*local*"
-    ".env.*local*"
+    "**/.env.local"
+    "**/.env.*local*"
     ".claude/"
     ".anthropic/"
 )
@@ -51,60 +51,54 @@ for pattern in "${FILE_PATTERNS[@]}"; do
         fi
     else
         # File pattern - use find to search recursively
-        while IFS= read -r -d '' file; do
-            if [[ -f "$file" ]]; then
-                relative_path="${file#$MAIN_WORKTREE/}"
-                target_path="$WORKTREE_PATH/$relative_path"
-                target_dir_path=$(dirname "$target_path")
+        # Handle glob patterns by using find with -path instead of -name
+        if [[ "$pattern" == **/* ]]; then
+            # Pattern contains directory separators, use -path
+            find_pattern="${pattern#**/}"
+            while IFS= read -r -d '' file; do
+                if [[ -f "$file" || -L "$file" ]]; then
+                    relative_path="${file#$MAIN_WORKTREE/}"
+                    target_path="$WORKTREE_PATH/$relative_path"
+                    target_dir_path=$(dirname "$target_path")
 
-                # Create target directory if it doesn't exist
-                mkdir -p "$target_dir_path" 2>/dev/null
+                    # Create target directory if it doesn't exist
+                    mkdir -p "$target_dir_path" 2>/dev/null
 
-                # Copy file
-                if cp "$file" "$target_path" 2>/dev/null; then
-                    copied_files+=("$relative_path")
+                    # Copy file (including symlinks)
+                    if cp -P "$file" "$target_path" 2>/dev/null; then
+                        copied_files+=("$relative_path")
+                    fi
                 fi
-            fi
-        done < <(find "$MAIN_WORKTREE" -name "$pattern" -type f -print0 2>/dev/null)
+            done < <(find "$MAIN_WORKTREE" -path "*/$find_pattern" \( -type f -o -type l \) -print0 2>/dev/null)
+        else
+            # Simple pattern, use -name
+            while IFS= read -r -d '' file; do
+                if [[ -f "$file" || -L "$file" ]]; then
+                    relative_path="${file#$MAIN_WORKTREE/}"
+                    target_path="$WORKTREE_PATH/$relative_path"
+                    target_dir_path=$(dirname "$target_path")
+
+                    # Create target directory if it doesn't exist
+                    mkdir -p "$target_dir_path" 2>/dev/null
+
+                    # Copy file (including symlinks)
+                    if cp -P "$file" "$target_path" 2>/dev/null; then
+                        copied_files+=("$relative_path")
+                    fi
+                fi
+            done < <(find "$MAIN_WORKTREE" -name "$pattern" \( -type f -o -type l \) -print0 2>/dev/null)
+        fi
     fi
 done
 
 # Report what was copied
 if [[ ${#copied_files[@]} -gt 0 ]]; then
-    echo "📋 Copied local files: ${copied_files[*]}"
+    echo "📋 Copied local files:"
+    for file in "${copied_files[@]}"; do
+        echo "  - $file"
+    done
 else
     echo "ℹ️  No local files found to copy"
-fi
-
-# Whether to run pnpm commands by default
-run_pnpm=true
-
-# Example: Run pnpm commands if enabled
-if [[ "$run_pnpm" == "true" && -f "$WORKTREE_PATH/package.json" ]]; then
-    echo "📦 Running pnpm commands in worktree..."
-
-    if command -v pnpm >/dev/null 2>&1; then
-        echo "  Running pnpm approve-builds..."
-        # Ensure stdin is available for interactive prompts
-        if [[ -t 0 ]]; then
-            # Running interactively - allow user input
-            (cd "$WORKTREE_PATH" && pnpm approve-builds) || echo "  ⚠️  pnpm approve-builds failed"
-        else
-            # Running non-interactively - auto-approve all builds
-            echo "  (Non-interactive mode: auto-approving all builds)"
-            (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds) || echo "  ⚠️  pnpm install failed"
-        fi
-
-        # Only run install if we didn't already run it with --dangerously-allow-all-builds
-        if [[ -t 0 ]]; then
-            echo "  Running pnpm install..."
-            (cd "$WORKTREE_PATH" && pnpm install) || echo "  ⚠️  pnpm install failed"
-        fi
-    else
-        echo "  ⚠️  pnpm not found, skipping pnpm commands"
-    fi
-else
-    echo "⏭️  Skipping pnpm commands"
 fi
 
 # Example: Set up IDE configuration

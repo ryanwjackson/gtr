@@ -225,8 +225,6 @@ _gtr_generate_default_config() {
 editor=cursor
 
 
-# Whether to run pnpm commands by default
-run_pnpm=true
 
 # Whether to open editor after creating worktree
 auto_open=true
@@ -303,7 +301,6 @@ _gtr_repair_config() {
     echo ""
     echo "[settings]"
     echo "editor=cursor"
-    echo "run_pnpm=true"
     echo "auto_open=true"
     echo ""
     echo "[doctor]"
@@ -507,8 +504,6 @@ _gtr_create_default_config() {
 editor=cursor
 
 
-# Whether to run pnpm commands by default
-run_pnpm=true
 
 # Whether to open editor after creating worktree
 auto_open=true
@@ -801,7 +796,7 @@ _gtr_copy_hooks_to_global() {
       
       if [[ ! -f "$target_file" ]]; then
         if cp "$hook_file" "$target_file" 2>/dev/null; then
-          chmod +x "$target_file" 2>/dev/null
+          # Don't make executable by default - users must explicitly enable hooks
           copied_hooks+=("$hook_name")
         fi
       fi
@@ -809,10 +804,11 @@ _gtr_copy_hooks_to_global() {
   done
   
   if [[ ${#copied_hooks[@]} -gt 0 ]]; then
-    echo "🔧 Copied hooks to global config:"
+    echo "🔧 Copied sample hooks to global config:"
     for hook in "${copied_hooks[@]}"; do
       echo "  - $hook"
     done
+    echo "   To enable a hook: cp $hooks_dir/$hook.sample $hooks_dir/$hook && chmod +x $hooks_dir/$hook"
     echo "   Edit hooks in: $hooks_dir"
   else
     echo "📋 Hooks already exist in global config"
@@ -892,7 +888,7 @@ _gtr_copy_hooks_to_local() {
       
       if [[ ! -f "$target_file" ]]; then
         if cp "$hook_file" "$target_file" 2>/dev/null; then
-          chmod +x "$target_file" 2>/dev/null
+          # Don't make executable by default - users must explicitly enable hooks
           copied_hooks+=("$hook_name")
         fi
       fi
@@ -900,10 +896,11 @@ _gtr_copy_hooks_to_local() {
   done
   
   if [[ ${#copied_hooks[@]} -gt 0 ]]; then
-    echo "🔧 Copied hooks to local config:"
+    echo "🔧 Copied sample hooks to local config:"
     for hook in "${copied_hooks[@]}"; do
       echo "  - $hook"
     done
+    echo "   To enable a hook: cp $hooks_dir/$hook.sample $hooks_dir/$hook && chmod +x $hooks_dir/$hook"
     echo "   Edit hooks in: $hooks_dir"
   else
     echo "📋 Hooks already exist in local config"

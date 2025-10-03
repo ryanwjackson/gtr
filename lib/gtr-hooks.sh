@@ -14,7 +14,12 @@ _gtr_execute_hook() {
   fi
   
   if [[ ! -x "$hook_file" ]]; then
-    echo "⚠️  Hook $hook_name is not executable, skipping"
+    # Check if it's a .sample file that needs to be enabled
+    if [[ "$hook_file" == *.sample ]]; then
+      echo "ℹ️  Hook $hook_name is a sample file, skipping (copy to enable)"
+    else
+      echo "⚠️  Hook $hook_name is not executable, skipping"
+    fi
     return 0
   fi
   
@@ -58,7 +63,7 @@ _gtr_execute_pre_create_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "pre-create" "$hooks_dir" "$worktree_name" "$worktree_path" "$branch_name" "$base_branch"
+  _gtr_execute_hook "pre-create" "$hooks_dir" "create" "$worktree_name" "$worktree_path" "$branch_name" "$base_branch"
 }
 
 _gtr_execute_post_create_hook() {
@@ -73,7 +78,7 @@ _gtr_execute_post_create_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "post-create" "$hooks_dir" "$worktree_name" "$worktree_path" "$branch_name" "$base_branch"
+  _gtr_execute_hook "post-create" "$hooks_dir" "create" "$worktree_name" "$worktree_path" "$branch_name" "$base_branch"
 }
 
 _gtr_execute_pre_remove_hook() {
@@ -89,7 +94,7 @@ _gtr_execute_pre_remove_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "pre-remove" "$hooks_dir" "$worktree_name" "$worktree_path" "$branch_name" "$force" "$dry_run"
+  _gtr_execute_hook "pre-remove" "$hooks_dir" "remove" "$worktree_name" "$worktree_path" "$branch_name" "$force" "$dry_run"
 }
 
 _gtr_execute_post_remove_hook() {
@@ -105,7 +110,7 @@ _gtr_execute_post_remove_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "post-remove" "$hooks_dir" "$worktree_name" "$worktree_path" "$branch_name" "$force" "$dry_run"
+  _gtr_execute_hook "post-remove" "$hooks_dir" "remove" "$worktree_name" "$worktree_path" "$branch_name" "$force" "$dry_run"
 }
 
 _gtr_execute_pre_prune_hook() {
@@ -119,7 +124,7 @@ _gtr_execute_pre_prune_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "pre-prune" "$hooks_dir" "$base_branch" "$dry_run" "$force"
+  _gtr_execute_hook "pre-prune" "$hooks_dir" "prune" "$base_branch" "$dry_run" "$force"
 }
 
 _gtr_execute_post_prune_hook() {
@@ -133,5 +138,35 @@ _gtr_execute_post_prune_hook() {
     return 0  # No hooks directory found
   fi
   
-  _gtr_execute_hook "post-prune" "$hooks_dir" "$base_branch" "$dry_run" "$force"
+  _gtr_execute_hook "post-prune" "$hooks_dir" "prune" "$base_branch" "$dry_run" "$force"
+}
+
+_gtr_execute_before_open_hook() {
+  local worktree_name="$1"
+  local worktree_path="$2"
+  local editor="$3"
+  local gtr_action="$4"
+  local main_worktree="$5"
+  
+  local hooks_dir
+  if ! hooks_dir="$(_gtr_find_hooks_dir "$main_worktree")"; then
+    return 0  # No hooks directory found
+  fi
+  
+  _gtr_execute_hook "before-open" "$hooks_dir" "$gtr_action" "$worktree_name" "$worktree_path" "$editor"
+}
+
+_gtr_execute_post_open_hook() {
+  local worktree_name="$1"
+  local worktree_path="$2"
+  local editor="$3"
+  local gtr_action="$4"
+  local main_worktree="$5"
+  
+  local hooks_dir
+  if ! hooks_dir="$(_gtr_find_hooks_dir "$main_worktree")"; then
+    return 0  # No hooks directory found
+  fi
+  
+  _gtr_execute_hook "post-open" "$hooks_dir" "$gtr_action" "$worktree_name" "$worktree_path" "$editor"
 }

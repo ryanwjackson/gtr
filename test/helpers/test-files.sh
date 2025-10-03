@@ -111,20 +111,6 @@ test_gtr_copy_files_force() {
   assert_equals "new content" "$content" "Should overwrite with force flag"
 }
 
-# Test pnpm commands
-test_gtr_run_pnpm_commands() {
-  local worktree_dir="$TEST_TEMP_DIR/worktree"
-  mkdir -p "$worktree_dir"
-
-  # Test with no package.json
-  _gtr_run_pnpm_commands "$worktree_dir" "false" >/dev/null 2>&1
-  # Should not fail even without package.json
-
-  # Test with no-install flag
-  create_mock_file "$worktree_dir/package.json" '{"name": "test"}'
-  _gtr_run_pnpm_commands "$worktree_dir" "true" >/dev/null 2>&1
-  # Should skip commands when no-install is true
-}
 
 # Test show diff function
 test_gtr_show_diff() {
@@ -186,7 +172,6 @@ run_files_tests() {
   register_test "test_gtr_copy_local_files" "test_gtr_copy_local_files"
   register_test "test_gtr_copy_directories" "test_gtr_copy_directories"
   register_test "test_gtr_copy_files_force" "test_gtr_copy_files_force"
-  register_test "test_gtr_run_pnpm_commands" "test_gtr_run_pnpm_commands"
   register_test "test_gtr_show_diff" "test_gtr_show_diff"
   register_test "test_gtr_merge_files" "test_gtr_merge_files"
   register_test "test_recursive_pattern_matching" "test_recursive_pattern_matching"

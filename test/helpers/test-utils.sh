@@ -413,7 +413,6 @@ create_mock_config() {
 
 [settings]
 editor=test-editor
-run_pnpm=true
 auto_open=false
 
 [doctor]

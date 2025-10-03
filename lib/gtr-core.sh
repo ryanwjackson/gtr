@@ -291,14 +291,12 @@ _gtr_parse_global_flags() {
 
   # Read default values from config (only if we have a main worktree)
   local config_editor="cursor"
-  local config_run_pnpm="true"
   local config_auto_open="true"
   local config_worktree_base=""
   local config_untracked="true"
 
   if [[ -n "$main_worktree" ]]; then
     config_editor="$(_gtr_read_config_setting "$main_worktree" "settings" "editor" "cursor")"
-    config_run_pnpm="$(_gtr_read_config_setting "$main_worktree" "settings" "run_pnpm" "true")"
     config_auto_open="$(_gtr_read_config_setting "$main_worktree" "settings" "auto_open" "true")"
     config_worktree_base="$(_gtr_read_config_setting "$main_worktree" "settings" "worktree_base" "")"
     config_untracked="$(_gtr_read_config_setting "$main_worktree" "settings" "untracked" "true")"
@@ -437,7 +435,7 @@ _gtr_parse_global_flags() {
     no_open=true
   fi
 
-  if [[ "$no_install" == "false" && "$config_run_pnpm" == "false" ]]; then
+  if [[ "$no_install" == "false" ]]; then
     no_install=true
   fi
 
