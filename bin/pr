@@ -1,6 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Function to check if a PR is in draft state
+is_pr_draft() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "false"
+    return
+  fi
+  
+  local draft_status
+  draft_status=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null)
+  
+  if [[ "$draft_status" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# Function to mark a draft PR as ready for review
+mark_pr_ready() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "Error: No PR number provided" >&2
+    return 1
+  fi
+  
+  echo "🔄 Marking draft PR #$pr_number as ready for review..."
+  if gh pr ready "$pr_number" 2>/dev/null; then
+    echo "✅ PR #$pr_number marked as ready for review"
+    return 0
+  else
+    echo "⚠️  Could not mark PR #$pr_number as ready for review"
+    return 1
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bin/pr [options] [title] [body]
@@ -26,6 +64,7 @@ Behavior:
   - Creates new PR if none exists for the branch
   - Updates existing PR if one exists for the branch
   - Optionally enables auto-merge with squash strategy
+  - Automatically marks draft PRs as ready for review before enabling auto-merge
 
 Examples:
   # Simple PR creation/update with default title and body (auto-merge enabled)
@@ -215,6 +254,18 @@ if [[ -n "$existing_pr" && "$existing_pr" != "null" ]]; then
 
     # Handle auto-merge if requested
     if [[ "$auto_merge" == "true" ]]; then
+      # Check if PR is in draft state and mark as ready for review if needed
+      if [[ "$(is_pr_draft "$pr_number")" == "true" ]]; then
+        echo "📝 PR #$pr_number is in draft state, marking as ready for review..."
+        if mark_pr_ready "$pr_number"; then
+          echo "✅ PR #$pr_number is now ready for review"
+        else
+          echo "⚠️  PR #$pr_number could not be marked as ready for review, but auto-merge may still work"
+        fi
+      else
+        echo "✅ PR #$pr_number is already ready for review"
+      fi
+      
       # Check if auto-merge is already enabled
       auto_merge_status=$(gh pr view "$pr_number" --json autoMergeRequest --jq '.autoMergeRequest.enabledAt' 2>/dev/null)
       if [[ "$auto_merge_status" == "null" || -z "$auto_merge_status" ]]; then
@@ -244,6 +295,18 @@ else
       # Get the PR number
       pr_number=$(gh pr list --head "$head_branch" --base "$base_branch" --json number --jq '.[0].number' 2>/dev/null)
       if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+        # Check if PR is in draft state and mark as ready for review if needed
+        if [[ "$(is_pr_draft "$pr_number")" == "true" ]]; then
+          echo "📝 PR #$pr_number is in draft state, marking as ready for review..."
+          if mark_pr_ready "$pr_number"; then
+            echo "✅ PR #$pr_number is now ready for review"
+          else
+            echo "⚠️  PR #$pr_number could not be marked as ready for review, but auto-merge may still work"
+          fi
+        else
+          echo "✅ PR #$pr_number is already ready for review"
+        fi
+        
         if gh pr merge "$pr_number" --auto --squash 2>/dev/null; then
           echo "✅ Auto-merge enabled for PR #$pr_number"
           echo "🔗 View PR: $(gh pr view "$pr_number" --web --json url --jq '.url' 2>/dev/null)"
