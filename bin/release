@@ -331,6 +331,31 @@ else
   echo "Release $tag created"
 fi
 
+# If we're not on the main branch, trigger a re-run of PR checks after tag creation
+if [[ "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
+  echo "🔄 Triggering re-run of PR checks after tag creation..."
+  
+  # Get the PR number if it exists
+  pr_number=$(gh pr list --head "$current_branch" --base "$main_branch" --json number --jq '.[0].number' 2>/dev/null)
+  
+  if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+    echo "Found existing PR #$pr_number, triggering re-run of checks..."
+    
+    # Push a small commit to trigger re-run of checks
+    # This is a common pattern to re-trigger CI without changing functionality
+    if git log -1 --pretty=%B | grep -q "Trigger CI re-run"; then
+      echo "ℹ️  Last commit already triggered CI re-run, skipping"
+    else
+      # Create a small commit that triggers CI
+      echo "Trigger CI re-run after release tag $tag" | git commit --allow-empty -F -
+      git push "$remote" "$current_branch"
+      echo "✅ Triggered re-run of PR checks"
+    fi
+  else
+    echo "ℹ️  No existing PR found, will create one below"
+  fi
+fi
+
 # If we're not on the main branch, create a PR with auto-merge
 if [[ "$current_branch" != "HEAD" && "$current_branch" != "$main_branch" ]]; then
   if [[ "$is_worktree" == "true" ]]; then
