@@ -45,12 +45,7 @@ _gtr_find_or_create_worktree() {
       if git worktree add "$dir" -b "$branch_name" "$base_branch"; then
         echo "✅ Created worktree '$name'"
 
-        # Copy local files from main worktree to new worktree (only if we have files to copy)
-        local main_worktree="$(_gtr_get_main_worktree)"
-        local patterns=($(_gtr_read_config "$main_worktree"))
-        if [[ ${#patterns[@]} -gt 0 ]]; then
-          _gtr_copy_local_files "$main_worktree" "$dir" "true" "$main_worktree"
-        fi
+        # File copying is now handled by the post-create hook
 
 
         echo "$dir"
@@ -179,11 +174,7 @@ _gtr_create_worktree() {
       echo "  ℹ️  Files copied to worktree. Git states (staged/modified) will need to be recreated manually."
     fi
 
-    # Copy local files from main worktree to new worktree (only if we have files to copy)
-    local patterns=($(_gtr_read_config "$main_worktree"))
-    if [[ ${#patterns[@]} -gt 0 ]]; then
-      _gtr_copy_local_files "$main_worktree" "$worktree_path" "true" "$main_worktree"
-    fi
+    # File copying is now handled by the post-create hook
 
 
     # Execute post-create hook

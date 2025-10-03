@@ -13,12 +13,14 @@
 #   0 - continue with worktree creation
 #   non-zero - abort worktree creation
 
-WORKTREE_NAME="$1"
-WORKTREE_PATH="$2"
-BRANCH_NAME="$3"
-BASE_BRANCH="$4"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🔧 Pre-create hook: $WORKTREE_NAME"
+# Initialize gtr context
+gtr_init_context "$@"
+
+gtr_log "Pre-create hook: $GTR_WORKTREE_NAME"
 
 # Example: Validate worktree name
 # if [[ "$WORKTREE_NAME" =~ ^[0-9] ]]; then

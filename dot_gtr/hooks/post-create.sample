@@ -13,93 +13,25 @@
 #   0 - success
 #   non-zero - failure (worktree will still exist, but hook failed)
 
-WORKTREE_NAME="$1"
-WORKTREE_PATH="$2"
-BRANCH_NAME="$3"
-BASE_BRANCH="$4"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🎉 Post-create hook: $WORKTREE_NAME"
+# Initialize gtr context
+gtr_init_context "$@"
 
-# Get the main worktree directory
-MAIN_WORKTREE=$(git rev-parse --show-toplevel)
-if [[ "$(git rev-parse --git-dir)" == *"/.git/worktrees/"* ]]; then
-    # We're in a worktree, get the main repository
-    MAIN_GIT_DIR=$(dirname "$(dirname "$(git rev-parse --git-dir)")")
-    MAIN_WORKTREE=$(dirname "$MAIN_GIT_DIR")
-fi
+echo "🎉 Post-create hook: $GTR_WORKTREE_NAME"
 
-# Copy local files from main worktree to new worktree
+# Copy local files from main worktree to new worktree using the utility
 echo "📋 Copying local files to worktree..."
 
-# File patterns to copy (customize as needed)
-FILE_PATTERNS=(
-    "**/.env.local"
-    "**/.env.*local*"
-    ".claude/"
+# Use the utility function to copy files
+# You can customize these patterns as needed
+copy_multiple_to_worktree \
+    "**/.env.local" \
+    "**/.env.*local*" \
+    ".claude/" \
     ".anthropic/"
-)
-
-copied_files=()
-for pattern in "${FILE_PATTERNS[@]}"; do
-    if [[ "$pattern" == */ ]]; then
-        # Directory pattern
-        dir_name="${pattern%/}"
-        if [[ -d "$MAIN_WORKTREE/$dir_name" ]]; then
-            if cp -r "$MAIN_WORKTREE/$dir_name" "$WORKTREE_PATH/" 2>/dev/null; then
-                copied_files+=("$dir_name/")
-            fi
-        fi
-    else
-        # File pattern - use find to search recursively
-        # Handle glob patterns by using find with -path instead of -name
-        if [[ "$pattern" == **/* ]]; then
-            # Pattern contains directory separators, use -path
-            find_pattern="${pattern#**/}"
-            while IFS= read -r -d '' file; do
-                if [[ -f "$file" || -L "$file" ]]; then
-                    relative_path="${file#$MAIN_WORKTREE/}"
-                    target_path="$WORKTREE_PATH/$relative_path"
-                    target_dir_path=$(dirname "$target_path")
-
-                    # Create target directory if it doesn't exist
-                    mkdir -p "$target_dir_path" 2>/dev/null
-
-                    # Copy file (including symlinks)
-                    if cp -P "$file" "$target_path" 2>/dev/null; then
-                        copied_files+=("$relative_path")
-                    fi
-                fi
-            done < <(find "$MAIN_WORKTREE" -path "*/$find_pattern" \( -type f -o -type l \) -print0 2>/dev/null)
-        else
-            # Simple pattern, use -name
-            while IFS= read -r -d '' file; do
-                if [[ -f "$file" || -L "$file" ]]; then
-                    relative_path="${file#$MAIN_WORKTREE/}"
-                    target_path="$WORKTREE_PATH/$relative_path"
-                    target_dir_path=$(dirname "$target_path")
-
-                    # Create target directory if it doesn't exist
-                    mkdir -p "$target_dir_path" 2>/dev/null
-
-                    # Copy file (including symlinks)
-                    if cp -P "$file" "$target_path" 2>/dev/null; then
-                        copied_files+=("$relative_path")
-                    fi
-                fi
-            done < <(find "$MAIN_WORKTREE" -name "$pattern" \( -type f -o -type l \) -print0 2>/dev/null)
-        fi
-    fi
-done
-
-# Report what was copied
-if [[ ${#copied_files[@]} -gt 0 ]]; then
-    echo "📋 Copied local files:"
-    for file in "${copied_files[@]}"; do
-        echo "  - $file"
-    done
-else
-    echo "ℹ️  No local files found to copy"
-fi
 
 # Example: Set up IDE configuration
 # echo "🔧 Setting up IDE configuration..."

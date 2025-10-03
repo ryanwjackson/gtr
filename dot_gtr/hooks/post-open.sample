@@ -19,11 +19,18 @@
 # 2. Make executable: chmod +x .gtr/hooks/post-open
 # 3. Edit the hook to add your custom logic
 
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
+
+# Initialize gtr context
+gtr_init_context "$@"
+
 # Example: Only run for create action
-if [[ "$1" == "create" ]]; then
-  echo "✅ Worktree opened successfully: $2"
-  echo "   Path: $3"
-  echo "   Editor: $4"
+if gtr_is_action "create"; then
+  gtr_log "Worktree opened successfully: $GTR_WORKTREE_NAME"
+  echo "   Path: $GTR_WORKTREE_PATH"
+  echo "   Editor: $GTR_EDITOR"
   
   # Add your custom logic here
   # For example, you might want to:
@@ -48,13 +55,13 @@ if [[ "$1" == "create" ]]; then
           # Handle special case for approve-builds in non-interactive mode
           if [[ "$cmd" == "approve-builds" && ! -t 0 ]]; then
               echo "  (Non-interactive mode: auto-approving all builds)"
-              if (cd "$WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds); then
+              if (cd "$GTR_WORKTREE_PATH" && pnpm install --dangerously-allow-all-builds); then
                   echo "  ✅ pnpm install --dangerously-allow-all-builds succeeded"
               else
                   echo "  ❌ pnpm install --dangerously-allow-all-builds failed"
               fi
           else
-              if (cd "$WORKTREE_PATH" && pnpm "$cmd"); then
+              if (cd "$GTR_WORKTREE_PATH" && pnpm "$cmd"); then
                   echo "  ✅ pnpm $cmd succeeded"
               else
                   echo "  ❌ pnpm $cmd failed"
@@ -67,9 +74,9 @@ if [[ "$1" == "create" ]]; then
 fi
 
 # Example: Run for all actions
-# echo "✅ Worktree opened: $2"
-# echo "   Action: $1"
-# echo "   Path: $3"
-# echo "   Editor: $4"
+# gtr_log "Worktree opened: $GTR_WORKTREE_NAME"
+# echo "   Action: $GTR_ACTION"
+# echo "   Path: $GTR_WORKTREE_PATH"
+# echo "   Editor: $GTR_EDITOR"
 
 exit 0

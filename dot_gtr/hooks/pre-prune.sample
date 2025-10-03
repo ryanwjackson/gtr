@@ -12,11 +12,17 @@
 #   0 - continue with prune operation
 #   non-zero - abort prune operation
 
-BASE_BRANCH="$1"
-DRY_RUN="$2"
-FORCE="$3"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🧹 Pre-prune hook: base=$BASE_BRANCH"
+# Initialize gtr context (prune hooks have different argument structure)
+GTR_ACTION="prune"
+GTR_BASE_BRANCH="$1"
+GTR_DRY_RUN="$2"
+GTR_FORCE="$3"
+
+gtr_log "Pre-prune hook: base=$GTR_BASE_BRANCH"
 
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "🔍 [DRY RUN] Would run pre-prune checks"

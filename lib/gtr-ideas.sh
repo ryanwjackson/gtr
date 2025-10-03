@@ -225,6 +225,8 @@ OPTIONS:
     --todo                     Show only TODO ideas (for list command)
     --status=STATUS            Filter by status: TODO, IN_PROGRESS, DONE, BLOCKED (for list command)
     --filter=STRING            Search for ideas containing STRING in title or content (for list command)
+    --less                     Use less instead of editor for viewing (for create/open commands)
+    --no-open                  Don't open editor, just show file path (for create command)
 
 EXAMPLES:
     # Create ideas
@@ -259,11 +261,25 @@ EOF
 
 gtr_idea_create() {
   local summary=""
+  local use_less="false"
+  local no_open="false"
   
-  # Check if summary was provided as argument
-  if [[ ${#_GTR_ARGS[@]} -gt 0 ]]; then
-    summary="${_GTR_ARGS[0]}"
-  fi
+  # Parse arguments
+  for arg in "${_GTR_ARGS[@]}"; do
+    case "$arg" in
+      --less)
+        use_less="true"
+        ;;
+      --no-open)
+        no_open="true"
+        ;;
+      *)
+        if [[ -z "$summary" ]]; then
+          summary="$arg"
+        fi
+        ;;
+    esac
+  done
   
   # If no summary provided, prompt for it
   if [[ -z "$summary" ]]; then
@@ -297,13 +313,25 @@ gtr_idea_create() {
     echo "✅ Created idea: $filename"
     echo "📁 Location: $file_path"
     
-    # Open in editor if configured
-    local editor="${_GTR_EDITOR:-cursor}"
-    if command -v "$editor" >/dev/null 2>&1; then
-      echo "🔧 Opening in $editor..."
-      "$editor" "$file_path"
+    # Handle editor opening based on flags
+    if [[ "$no_open" == "true" ]]; then
+      echo "💡 File created. Open manually: $file_path"
+    elif [[ "$use_less" == "true" ]]; then
+      echo "🔧 Opening with less..."
+      if command -v less >/dev/null 2>&1; then
+        less "$file_path"
+      else
+        echo "💡 Open with: less \"$file_path\""
+      fi
     else
-      echo "💡 Open with: $editor \"$file_path\""
+      # Open in editor if configured
+      local editor="${_GTR_EDITOR:-cursor}"
+      if command -v "$editor" >/dev/null 2>&1; then
+        echo "🔧 Opening in $editor..."
+        "$editor" "$file_path"
+      else
+        echo "💡 Open with: $editor \"$file_path\""
+      fi
     fi
   else
     echo "❌ Failed to create idea file: $file_path"
@@ -329,12 +357,20 @@ gtr_idea_list() {
 gtr_idea_open() {
   # Parse arguments for filtering
   local show_mine="false"
+  local use_less="false"
+  local no_open="false"
   local username="${_GTR_USERNAME:-$(whoami)}"
   
   for arg in "${_GTR_ARGS[@]}"; do
     case "$arg" in
       --mine)
         show_mine="true"
+        ;;
+      --less)
+        use_less="true"
+        ;;
+      --no-open)
+        no_open="true"
         ;;
     esac
   done
@@ -510,13 +546,25 @@ gtr_idea_open() {
     if [[ $result -eq 0 ]]; then
       # Selection made
       local selected_file="${file_paths[$selected_index]}"
-      local editor="${_GTR_EDITOR:-cursor}"
       
-      if command -v "$editor" >/dev/null 2>&1; then
-        echo "🔧 Opening ${display_items[$selected_index]} in $editor..."
-        "$editor" "$selected_file"
+      if [[ "$no_open" == "true" ]]; then
+        echo "💡 Selected: ${display_items[$selected_index]}"
+        echo "💡 File: $selected_file"
+      elif [[ "$use_less" == "true" ]]; then
+        echo "🔧 Opening ${display_items[$selected_index]} with less..."
+        if command -v less >/dev/null 2>&1; then
+          less "$selected_file"
+        else
+          echo "💡 Open with: less \"$selected_file\""
+        fi
       else
-        echo "💡 Open with: $editor \"$selected_file\""
+        local editor="${_GTR_EDITOR:-cursor}"
+        if command -v "$editor" >/dev/null 2>&1; then
+          echo "🔧 Opening ${display_items[$selected_index]} in $editor..."
+          "$editor" "$selected_file"
+        else
+          echo "💡 Open with: $editor \"$selected_file\""
+        fi
       fi
       break
     elif [[ $result -eq 1 ]]; then

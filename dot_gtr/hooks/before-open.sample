@@ -19,11 +19,22 @@
 # 2. Make executable: chmod +x .gtr/hooks/before-open
 # 3. Edit the hook to add your custom logic
 
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
+
+# Initialize gtr context
+gtr_init_context "$@"
+
 # Example: Only run for create action
-if [[ "$1" == "create" ]]; then
-  echo "🔧 Preparing to open new worktree: $2"
-  echo "   Path: $3"
-  echo "   Editor: $4"
+if gtr_is_action "create"; then
+  gtr_log "Preparing to open new worktree: $GTR_WORKTREE_NAME"
+  echo "   Path: $GTR_WORKTREE_PATH"
+  echo "   Editor: $GTR_EDITOR"
+  
+  # Example: Copy specific files before opening
+  # copy_to_worktree "apps/web/.env.local"
+  # copy_to_worktree "**/.env.*local*"
   
   # Add your custom logic here
   # For example, you might want to:
@@ -33,9 +44,9 @@ if [[ "$1" == "create" ]]; then
 fi
 
 # Example: Run for all actions
-# echo "🔧 About to open worktree: $2"
-# echo "   Action: $1"
-# echo "   Path: $3"
-# echo "   Editor: $4"
+# gtr_log "About to open worktree: $GTR_WORKTREE_NAME"
+# echo "   Action: $GTR_ACTION"
+# echo "   Path: $GTR_WORKTREE_PATH"
+# echo "   Editor: $GTR_EDITOR"
 
 exit 0
