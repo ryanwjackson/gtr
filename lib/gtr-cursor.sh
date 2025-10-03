@@ -45,3 +45,4 @@ gtr_cursor() {
     ( cd "$dir" && cursor )
   fi
 }
+

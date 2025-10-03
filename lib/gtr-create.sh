@@ -42,3 +42,4 @@ gtr_create() {
     echo "🔍 Dry run complete! Use without --dry-run to actually create worktrees."
   fi
 }
+

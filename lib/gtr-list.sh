@@ -5,3 +5,4 @@
 gtr_list() {
   git worktree list
 }
+

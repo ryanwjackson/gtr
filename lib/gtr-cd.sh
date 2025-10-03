@@ -47,3 +47,4 @@ gtr_cd() {
   echo "No such worktree or branch: $name" >&2
   return 1
 }
+
