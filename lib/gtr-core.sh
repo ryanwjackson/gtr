@@ -475,6 +475,7 @@ COMMANDS:
     list, ls, l                   List all worktrees
     idea, i {create|list|open}    Manage idea files
     generate, g {hook}            Generate new hooks from templates
+    run hook <name> [--base=BRANCH] Run a hook manually with proper variables
     claude <name> [-- <args>...]  Run claude in worktree directory
     cursor <name> [-- <args>...]  Run cursor in worktree directory
     prune                         Clean up merged worktrees
@@ -537,6 +538,11 @@ EXAMPLES:
     gtr doctor feature0 --fix              # Check and fix specific worktree
     gtr doctor --fix                       # Check and fix current worktree
     gtr doctor --fix --force               # Fix without interactive prompts
+
+    # Hook management
+    gtr run hook pre-create                # Run pre-create hook with branch selection
+    gtr run hook post-create --base main   # Run post-create hook with main branch
+    gtr run hook pre-remove --base develop # Run pre-remove hook with develop branch
 
     # Configuration
     gtr init                               # Initialize gtr configuration

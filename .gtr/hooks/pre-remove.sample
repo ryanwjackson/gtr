@@ -14,13 +14,14 @@
 #   0 - continue with worktree removal
 #   non-zero - abort worktree removal
 
-WORKTREE_NAME="$1"
-WORKTREE_PATH="$2"
-BRANCH_NAME="$3"
-FORCE="$4"
-DRY_RUN="$5"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🗑️  Pre-remove hook: $WORKTREE_NAME"
+# Initialize gtr context
+gtr_init_context "$@"
+
+gtr_log "Pre-remove hook: $GTR_WORKTREE_NAME"
 
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "🔍 [DRY RUN] Would run pre-remove checks"
