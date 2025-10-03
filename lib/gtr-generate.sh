@@ -240,3 +240,4 @@ _gtr_generate_hook() {
 
   return 0
 }
+

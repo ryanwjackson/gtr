@@ -45,3 +45,4 @@ gtr_remove() {
     echo "🔍 Dry run complete! Use without --dry-run to actually remove worktrees."
   fi
 }
+

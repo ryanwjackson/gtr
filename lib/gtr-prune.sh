@@ -39,3 +39,4 @@ gtr_prune() {
 
   _gtr_prune_worktrees
 }
+
