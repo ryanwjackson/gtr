@@ -47,6 +47,44 @@ bump_version() {
   echo "v$major.$minor.$patch"
 }
 
+# Function to check if a PR is in draft state
+is_pr_draft() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "false"
+    return
+  fi
+  
+  local draft_status
+  draft_status=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null)
+  
+  if [[ "$draft_status" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# Function to mark a draft PR as ready for review
+mark_pr_ready() {
+  local pr_number="$1"
+  
+  if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+    echo "Error: No PR number provided" >&2
+    return 1
+  fi
+  
+  echo "🔄 Marking draft PR #$pr_number as ready for review..."
+  if gh pr ready "$pr_number" 2>/dev/null; then
+    echo "✅ PR #$pr_number marked as ready for review"
+    return 0
+  else
+    echo "⚠️  Could not mark PR #$pr_number as ready for review"
+    return 1
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bin/release [options] <version>
@@ -312,6 +350,25 @@ This PR is set to auto-merge once CI passes."
   echo "Using bin/pr to create/update PR with auto-merge..."
   if "$(dirname "$0")/pr" --base "$main_branch" --head "$current_branch" "$pr_title" "$pr_body"; then
     echo "✅ PR handled successfully via bin/pr"
+    
+    # Get the PR number to check if it's in draft state
+    pr_number=$(gh pr list --head "$current_branch" --base "$main_branch" --json number --jq '.[0].number' 2>/dev/null)
+    
+    if [[ -n "$pr_number" && "$pr_number" != "null" ]]; then
+      # Check if the PR is in draft state and mark it as ready for review if needed
+      if [[ "$(is_pr_draft "$pr_number")" == "true" ]]; then
+        echo "📝 PR #$pr_number is in draft state, marking as ready for review..."
+        if mark_pr_ready "$pr_number"; then
+          echo "✅ PR #$pr_number is now ready for review and auto-merge will proceed"
+        else
+          echo "⚠️  PR #$pr_number could not be marked as ready for review, but auto-merge may still work"
+        fi
+      else
+        echo "✅ PR #$pr_number is already ready for review"
+      fi
+    else
+      echo "⚠️  Could not retrieve PR number to check draft status"
+    fi
   else
     echo "❌ Failed to handle PR via bin/pr"
     exit 1
