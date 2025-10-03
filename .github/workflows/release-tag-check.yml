@@ -72,21 +72,31 @@ jobs:
           echo "Branch commit: $head_commit"
         fi
 
-        # For both pull requests and branch pushes, check for release tag on the head commit
+        # For both pull requests and branch pushes, check for release tag on any commit in the branch
         if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.ref_type }}" == "branch" ]]; then
-          # Check if there's a release tag pointing to the head commit
-          release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
+          # For pull requests, check all commits in the PR for release tags
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Get the base commit to check commits from base to head
+            base_commit="${{ github.event.pull_request.base.sha }}"
+            echo "Checking for release tags in commits from $base_commit to $head_commit"
+            
+            # Check if there's a release tag pointing to any commit in the PR range
+            release_tags=$(git tag -l 'v*.*.*' --points-at "$base_commit..$head_commit" || true)
+          else
+            # For branch pushes, check the head commit
+            release_tags=$(git tag -l 'v*.*.*' --points-at "$head_commit" || true)
+          fi
 
           if [[ -z "$release_tags" ]]; then
-            echo "❌ No release tag found on the latest commit."
+            echo "❌ No release tag found on any commit in this branch."
             echo ""
             if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              echo "This pull request cannot be merged into main without a release tag on the latest commit."
+              echo "This pull request cannot be merged into main without a release tag on any commit in the PR."
             else
               echo "This branch cannot be merged into main without a release tag on the latest commit."
             fi
             echo "To fix this:"
-            echo "1. Create a release tag on the latest commit: git tag v1.2.3"
+            echo "1. Create a release tag on any commit in the branch: git tag v1.2.3"
             echo "2. Push the tag: git push origin v1.2.3"
             echo "3. Or use the bin/release script to create a proper release"
             echo ""
@@ -94,7 +104,7 @@ jobs:
             git log --oneline --decorate -10 || true
             exit 1
           else
-            echo "✅ Found release tag(s) on the latest commit:"
+            echo "✅ Found release tag(s) on commit(s) in this branch:"
             echo "$release_tags"
 
             # Validate that it's a proper semantic version tag
