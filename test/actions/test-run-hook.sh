@@ -83,6 +83,14 @@ echo "This is a sample hook"
 exit 0
 EOF
   chmod +x .gtr/hooks/sample-hook.sample
+  
+  # Create a non-executable sample hook for testing
+  cat > .gtr/hooks/sample-hook << 'EOF'
+#!/bin/bash
+echo "This is a sample hook"
+exit 0
+EOF
+  # Don't make it executable
 }
 
 # Cleanup test environment
@@ -98,7 +106,7 @@ test_run_hook_with_name() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook $TEST_HOOK_NAME 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME 2>&1); then
     if echo "$output" | grep -q "Test hook executing for: manual-run" && \
        echo "$output" | grep -q "Base branch: main" && \
        echo "$output" | grep -q "Test hook completed"; then
@@ -122,7 +130,7 @@ test_run_hook_with_base() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook $TEST_HOOK_NAME --base=develop 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME --base=develop 2>&1); then
     if echo "$output" | grep -q "Test hook executing for: manual-run" && \
        echo "$output" | grep -q "Base branch: develop" && \
        echo "$output" | grep -q "Test hook completed"; then
@@ -146,7 +154,7 @@ test_run_hook_without_name() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     return 1
   else
@@ -168,7 +176,7 @@ test_run_hook_nonexistent() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook nonexistent-hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook nonexistent-hook 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     return 1
   else
@@ -190,7 +198,7 @@ test_run_hook_non_executable() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook non-executable-hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook non-executable-hook 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     return 1
   else
@@ -214,7 +222,7 @@ test_run_hook_outside_git() {
   temp_dir=$(mktemp -d)
   
   local output
-  if output=$(cd "$temp_dir" && "$GTR_TEST_TEMP_DIR/../../bin/gtr" run hook $TEST_HOOK_NAME 2>&1); then
+  if output=$(cd "$temp_dir" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     rm -rf "$temp_dir"
     return 1
@@ -238,7 +246,7 @@ test_run_hook_sample() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook sample-hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook sample-hook 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     return 1
   else
@@ -259,7 +267,7 @@ test_run_hook_dry_run() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook $TEST_HOOK_NAME --dry-run 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME --dry-run 2>&1); then
     if echo "$output" | grep -q "Test hook executing for: manual-run" && \
        echo "$output" | grep -q "Dry run: true" && \
        echo "$output" | grep -q "Test hook completed"; then
@@ -283,7 +291,7 @@ test_run_hook_force() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook $TEST_HOOK_NAME --force 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME --force 2>&1); then
     if echo "$output" | grep -q "Test hook executing for: manual-run" && \
        echo "$output" | grep -q "Force: true" && \
        echo "$output" | grep -q "Test hook completed"; then
@@ -307,7 +315,7 @@ test_run_hook_custom_editor() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook $TEST_HOOK_NAME --editor=vim 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME --editor=vim 2>&1); then
     if echo "$output" | grep -q "Test hook executing for: manual-run" && \
        echo "$output" | grep -q "Editor: vim" && \
        echo "$output" | grep -q "Test hook completed"; then
@@ -331,7 +339,7 @@ test_run_hook_another() {
   echo "Testing: $test_name"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook another-hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook another-hook 2>&1); then
     if echo "$output" | grep -q "Another hook executing" && \
        echo "$output" | grep -q "Another hook completed"; then
       echo "✅ $test_name passed"
@@ -362,7 +370,7 @@ EOF
   chmod +x "$GTR_TEST_TEMP_DIR/.gtr/hooks/failing-hook"
   
   local output
-  if output=$(cd "$GTR_TEST_TEMP_DIR" && ../../bin/gtr run hook failing-hook 2>&1); then
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook failing-hook 2>&1); then
     echo "❌ $test_name failed: Command should have failed"
     return 1
   else
@@ -375,6 +383,107 @@ EOF
       echo "Output: $output"
       return 1
     fi
+  fi
+}
+
+# Test run hook from main branch (should ask for worktree)
+test_run_hook_from_main() {
+  local test_name="run_hook_from_main"
+  echo "Testing: $test_name"
+  
+  # Ensure we're on main branch
+  cd "$GTR_TEST_TEMP_DIR" || exit 1
+  git checkout main
+  
+  # Create a worktree for testing
+  git worktree add ../test-worktree develop
+  
+  local output
+  # This should fail because we can't provide interactive input in tests
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME 2>&1); then
+    echo "❌ $test_name failed: Command should have failed in non-interactive mode"
+    return 1
+  else
+    if echo "$output" | grep -q "Non-interactive mode not supported when on main branch" && \
+       echo "$output" | grep -q "worktree selection required"; then
+      echo "✅ $test_name passed"
+      # Clean up worktree
+      git worktree remove ../test-worktree
+      return 0
+    else
+      echo "❌ $test_name failed: Output doesn't match expected"
+      echo "Output: $output"
+      # Clean up worktree
+      git worktree remove ../test-worktree
+      return 1
+    fi
+  fi
+}
+
+# Test run hook from worktree (should ask for branch with main as default)
+test_run_hook_from_worktree() {
+  local test_name="run_hook_from_worktree"
+  echo "Testing: $test_name"
+  
+  # Create a worktree for testing
+  cd "$GTR_TEST_TEMP_DIR" || exit 1
+  git worktree add ../test-worktree develop
+  
+  local output
+  # This should work because we're on a worktree and can use default
+  if output=$(cd ../test-worktree && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME 2>&1); then
+    if echo "$output" | grep -q "Test hook executing for: manual-run" && \
+       echo "$output" | grep -q "Base branch: main" && \
+       echo "$output" | grep -q "Test hook completed"; then
+      echo "✅ $test_name passed"
+      # Clean up worktree
+      cd "$GTR_TEST_TEMP_DIR"
+      git worktree remove ../test-worktree
+      return 0
+    else
+      echo "❌ $test_name failed: Output doesn't match expected"
+      echo "Output: $output"
+      # Clean up worktree
+      cd "$GTR_TEST_TEMP_DIR"
+      git worktree remove ../test-worktree
+      return 1
+    fi
+  else
+    echo "❌ $test_name failed: Command failed"
+    echo "Output: $output"
+    # Clean up worktree
+    cd "$GTR_TEST_TEMP_DIR"
+    git worktree remove ../test-worktree
+    return 1
+  fi
+}
+
+# Test run hook from main with no worktrees available
+test_run_hook_from_main_no_worktrees() {
+  local test_name="run_hook_from_main_no_worktrees"
+  echo "Testing: $test_name"
+  
+  # Ensure we're on main branch
+  cd "$GTR_TEST_TEMP_DIR" || exit 1
+  git checkout main
+  
+  local output
+  # This should work by falling back to branch selection when no worktrees are found
+  if output=$(cd "$GTR_TEST_TEMP_DIR" && "$GTR_TEST_GTR_PATH" run hook $TEST_HOOK_NAME 2>&1); then
+    if echo "$output" | grep -q "No worktrees found" && \
+       echo "$output" | grep -q "Selecting base branch instead" && \
+       echo "$output" | grep -q "Test hook completed"; then
+      echo "✅ $test_name passed"
+      return 0
+    else
+      echo "❌ $test_name failed: Output doesn't match expected"
+      echo "Output: $output"
+      return 1
+    fi
+  else
+    echo "❌ $test_name failed: Command failed"
+    echo "Output: $output"
+    return 1
   fi
 }
 
@@ -395,6 +504,9 @@ run_tests() {
   register_test "run_hook_custom_editor" test_run_hook_custom_editor
   register_test "run_hook_another" test_run_hook_another
   register_test "run_hook_failing" test_run_hook_failing
+  register_test "run_hook_from_main" test_run_hook_from_main
+  register_test "run_hook_from_worktree" test_run_hook_from_worktree
+  register_test "run_hook_from_main_no_worktrees" test_run_hook_from_main_no_worktrees
   
   cleanup_test_env
   finish_test_suite
