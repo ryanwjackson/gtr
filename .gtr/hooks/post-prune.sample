@@ -13,12 +13,18 @@
 #   0 - success
 #   non-zero - failure (pruning already completed, but hook failed)
 
-BASE_BRANCH="$1"
-DRY_RUN="$2"
-FORCE="$3"
-REMOVED_COUNT="${4:-0}"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🧹 Post-prune hook: removed $REMOVED_COUNT worktrees"
+# Initialize gtr context (prune hooks have different argument structure)
+GTR_ACTION="prune"
+GTR_BASE_BRANCH="$1"
+GTR_DRY_RUN="$2"
+GTR_FORCE="$3"
+GTR_REMOVED_COUNT="${4:-0}"
+
+gtr_log "Post-prune hook: removed $GTR_REMOVED_COUNT worktrees"
 
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "🔍 [DRY RUN] Would run post-prune cleanup"

@@ -37,6 +37,21 @@ gtr_remove() {
     fi
   fi
 
+  # Validate hooks before proceeding
+  local main_worktree="$(_gtr_get_main_worktree)"
+  if [[ -n "$main_worktree" ]]; then
+    # Show which hooks will be executed
+    _gtr_show_hooks_for_command "remove" "$main_worktree"
+    
+    # Validate hooks (only if not dry run)
+    if [[ "$dry_run" == "false" ]]; then
+      if ! _gtr_validate_hooks_for_command "remove" "$main_worktree"; then
+        echo "❌ Hook validation failed. Please fix the issues above before proceeding."
+        return 1
+      fi
+    fi
+  fi
+
   for name in "${names[@]}"; do
     _gtr_remove_worktree "$name" "$force" "$dry_run"
   done

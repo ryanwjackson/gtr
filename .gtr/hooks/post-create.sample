@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# gtr post-create hook
+# This hook runs AFTER successfully creating a new worktree
+#
+# Arguments:
+#   $1 - worktree name
+#   $2 - worktree path
+#   $3 - branch name
+#   $4 - base branch
+#
+# Exit codes:
+#   0 - success
+#   non-zero - failure (worktree will still exist, but hook failed)
+
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
+
+# Initialize gtr context
+gtr_init_context "$@"
+
+echo "🎉 Post-create hook: $GTR_WORKTREE_NAME"
+
+# Copy local files from main worktree to new worktree using the utility
+echo "📋 Copying local files to worktree..."
+
+# Use the utility function to copy files
+# You can customize these patterns as needed
+copy_multiple_to_worktree \
+    "**/.env.local" \
+    "**/.env.*local*" \
+    ".claude/" \
+    ".anthropic/"
+
+# Example: Set up IDE configuration
+# echo "🔧 Setting up IDE configuration..."
+# if [[ -f "$WORKTREE_PATH/.vscode/settings.json" ]]; then
+#     # Customize VS Code settings for this worktree
+#     echo "  Customizing VS Code settings..."
+# fi
+
+# Example: Create development database
+# echo "🗄️  Setting up development database..."
+# (cd "$WORKTREE_PATH" && npm run db:setup:dev) || echo "  ⚠️  Database setup failed"
+
+# Example: Install git hooks in the worktree
+# echo "🪝 Installing git hooks..."
+# (cd "$WORKTREE_PATH" && npx husky install) || echo "  ⚠️  Husky install failed"
+
+# Example: Notify external systems
+# echo "📡 Notifying development tools..."
+# curl -X POST "https://your-dev-server.com/worktree/created" \
+#   -H "Content-Type: application/json" \
+#   -d "{\"name\":\"$WORKTREE_NAME\",\"path\":\"$WORKTREE_PATH\",\"branch\":\"$BRANCH_NAME\"}" \
+#   >/dev/null 2>&1 || echo "  ⚠️  Failed to notify development server"
+
+echo "✅ Post-create setup completed"
+exit 0

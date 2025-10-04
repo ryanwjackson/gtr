@@ -39,6 +39,7 @@ source_module "gtr-prune.sh"    # Prune merged worktrees command
 source_module "gtr-init.sh"     # Initialize configuration command
 source_module "gtr-doctor.sh"   # Check and fix worktree files command
 source_module "gtr-generate.sh" # Generate hooks and resources command
+source_module "gtr-run-hook.sh"  # Run hook command
 source_module "gtr-commands.sh" # Command dispatcher (depends on all above)
 
 # Main gtr function - dispatches to appropriate sub-commands
@@ -78,7 +79,7 @@ gtr() {
     return 0
   fi
 
-  shift || { echo "Usage: gtr {create|rm|cd|claude|cursor|prune|doctor|init} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
+  shift || { echo "Usage: gtr {create|rm|cd|claude|cursor|prune|doctor|init|run} [--prefix PREFIX] [--username USERNAME] [--editor EDITOR] [--no-open] [--no-install] [--base BRANCH] <name>"; return 1; }
 
   # Check for command-specific flags before parsing global flags
   local fix_mode="false"
@@ -151,8 +152,11 @@ gtr() {
     init)
       gtr_init
       ;;
+    run)
+      gtr_run_hook "$@"
+      ;;
     *)
-      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, generate, claude, cursor, prune, doctor, init)"; return 1;;
+      echo "Unknown sub-command: $cmd (use create, rm, cd, idea, generate, claude, cursor, prune, doctor, init, run)"; return 1;;
   esac
 }
 

@@ -39,8 +39,9 @@ test_gtr_init_current_directory() {
   
   # Verify hooks were copied to current directory
   assert_file_exists "$test_dir/.gtr/hooks" "Hooks directory should be created in current directory"
-  assert_file_exists "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be copied"
-  assert_file_exists "$test_dir/.gtr/hooks/post-create" "Post-create hook should be copied"
+  assert_file_exists "$test_dir/.gtr/hooks/pre-create.sample" "Pre-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/hooks/post-create.sample" "Post-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Cleanup
   rm -rf "$test_dir" "$main_worktree"
@@ -62,8 +63,9 @@ test_gtr_init_main_repository() {
   
   # Verify hooks were copied
   assert_file_exists "$test_dir/.gtr/hooks" "Hooks directory should be created"
-  assert_file_exists "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be copied"
-  assert_file_exists "$test_dir/.gtr/hooks/post-create" "Post-create hook should be copied"
+  assert_file_exists "$test_dir/.gtr/hooks/pre-create.sample" "Pre-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/hooks/post-create.sample" "Post-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Cleanup
   rm -rf "$test_dir"
@@ -92,7 +94,8 @@ EOF
   
   # Verify hooks were still copied
   assert_file_exists "$test_dir/.gtr/hooks" "Hooks directory should be created"
-  assert_file_exists "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be copied"
+  assert_file_exists "$test_dir/.gtr/hooks/pre-create.sample" "Pre-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Cleanup
   rm -rf "$test_dir"
@@ -109,12 +112,14 @@ test_gtr_init_hooks_copying() {
   # Mock user input for init
   (cd "$test_dir" && printf "keep\ny\n" | gtr_init >/dev/null 2>&1)
   
-  # Verify all hooks were copied
+  # Verify all hooks were copied with .sample extensions
   local expected_hooks=("pre-create" "post-create" "pre-remove" "post-remove" "pre-prune" "post-prune")
   for hook in "${expected_hooks[@]}"; do
-    assert_file_exists "$test_dir/.gtr/hooks/$hook" "Hook $hook should be copied"
-    assert_executable "$test_dir/.gtr/hooks/$hook" "Hook $hook should be executable"
+    assert_file_exists "$test_dir/.gtr/hooks/$hook.sample" "Hook $hook should be copied with .sample extension"
   done
+  
+  # Verify utils.sh was copied
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Verify hooks directory structure
   assert_directory_exists "$test_dir/.gtr/hooks" "Hooks directory should exist"
@@ -176,15 +181,14 @@ test_gtr_copy_hooks_to_local() {
   # Create .gtr directory
   mkdir -p "$test_dir/.gtr"
   
-  # Test hooks copying function directly
-  _gtr_copy_hooks_to_local "$test_dir" "$test_dir/.gtr"
+  # Test dot_gtr copying function directly
+  _gtr_copy_dot_gtr_to_local "$test_dir" "$test_dir/.gtr"
   
-  # Verify hooks were copied
+  # Verify hooks were copied with .sample extensions
   assert_directory_exists "$test_dir/.gtr/hooks" "Hooks directory should be created"
-  assert_file_exists "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be copied"
-  assert_file_exists "$test_dir/.gtr/hooks/post-create" "Post-create hook should be copied"
-  assert_executable "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be executable"
-  assert_executable "$test_dir/.gtr/hooks/post-create" "Post-create hook should be executable"
+  assert_file_exists "$test_dir/.gtr/hooks/pre-create.sample" "Pre-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/hooks/post-create.sample" "Post-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Cleanup
   rm -rf "$test_dir"
@@ -207,17 +211,20 @@ test_gtr_init_worktree_scenarios() {
   # Test init in worktree1
   (cd "$worktree1" && printf "keep\ny\n" | gtr_init >/dev/null 2>&1)
   assert_file_exists "$worktree1/.gtr/config" "Config should be created in worktree1"
-  assert_file_exists "$worktree1/.gtr/hooks/pre-create" "Hooks should be copied to worktree1"
+  assert_file_exists "$worktree1/.gtr/hooks/pre-create.sample" "Hooks should be copied to worktree1 with .sample extension"
+  assert_file_exists "$worktree1/.gtr/utils.sh" "utils.sh should be copied to worktree1"
   
   # Test init in worktree2
   (cd "$worktree2" && printf "keep\ny\n" | gtr_init >/dev/null 2>&1)
   assert_file_exists "$worktree2/.gtr/config" "Config should be created in worktree2"
-  assert_file_exists "$worktree2/.gtr/hooks/pre-create" "Hooks should be copied to worktree2"
+  assert_file_exists "$worktree2/.gtr/hooks/pre-create.sample" "Hooks should be copied to worktree2 with .sample extension"
+  assert_file_exists "$worktree2/.gtr/utils.sh" "utils.sh should be copied to worktree2"
   
   # Test init in main repo
   (cd "$main_repo" && printf "keep\ny\n" | gtr_init >/dev/null 2>&1)
   assert_file_exists "$main_repo/.gtr/config" "Config should be created in main repo"
-  assert_file_exists "$main_repo/.gtr/hooks/pre-create" "Hooks should be copied to main repo"
+  assert_file_exists "$main_repo/.gtr/hooks/pre-create.sample" "Hooks should be copied to main repo with .sample extension"
+  assert_file_exists "$main_repo/.gtr/utils.sh" "utils.sh should be copied to main repo"
   
   # Verify each has its own config (not shared)
   assert_file_different "$worktree1/.gtr/config" "$worktree2/.gtr/config" "Worktrees should have separate configs"
@@ -240,10 +247,11 @@ test_gtr_init_hooks_path_resolution() {
   
   # Verify hooks were found and copied (should work from any directory)
   assert_file_exists "$test_dir/.gtr/hooks" "Hooks directory should be created"
-  assert_file_exists "$test_dir/.gtr/hooks/pre-create" "Pre-create hook should be copied"
+  assert_file_exists "$test_dir/.gtr/hooks/pre-create.sample" "Pre-create hook should be copied with .sample extension"
+  assert_file_exists "$test_dir/.gtr/utils.sh" "utils.sh should be copied"
   
   # Verify hook content is not empty
-  local hook_content=$(cat "$test_dir/.gtr/hooks/pre-create")
+  local hook_content=$(cat "$test_dir/.gtr/hooks/pre-create.sample")
   assert_not_empty "$hook_content" "Hook should have content"
   
   # Cleanup

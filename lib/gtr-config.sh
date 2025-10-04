@@ -329,8 +329,8 @@ _gtr_init_global_config() {
   _gtr_create_default_config "$global_config_file"
   echo "📝 Created global configuration file at $global_config_file"
   
-  # Copy hooks to global config
-  _gtr_copy_hooks_to_global "$global_config_dir"
+  # Copy entire dot_gtr directory to global config
+  _gtr_copy_dot_gtr_to_global "$global_config_dir"
   
   echo "✅ Global gtr configuration initialized!"
 }
@@ -396,9 +396,9 @@ _gtr_init_config_with_options() {
     echo "📝 Created default $config_type configuration file"
   fi
 
-  # Copy hooks if this is a global config initialization
+  # Copy entire dot_gtr directory if this is a global config initialization
   if [[ "$config_type" == "global" ]]; then
-    _gtr_copy_hooks_to_global "$config_dir"
+    _gtr_copy_dot_gtr_to_global "$config_dir"
   fi
 
   echo "✅ $config_type gtr configuration initialized successfully!"
@@ -467,8 +467,8 @@ _gtr_init_config() {
     echo "📝 Created default configuration file"
   fi
 
-  # Copy hooks if this is a local config initialization
-  _gtr_copy_hooks_to_local "$main_worktree" "$config_dir"
+  # Copy entire dot_gtr directory if this is a local config initialization
+  _gtr_copy_dot_gtr_to_local "$main_worktree" "$config_dir"
 
   echo "✅ gtr configuration initialized successfully!"
   echo "   Config file: $config_file"
@@ -724,6 +724,123 @@ _gtr_init_doctor() {
   fi
 }
 
+_gtr_copy_dot_gtr_to_global() {
+  local global_config_dir="$1"
+  local source_dot_gtr_dir=""
+  
+  # Find the source dot_gtr directory (from the gtr installation)
+  # Try to find it relative to the current script location
+  local script_dir=""
+  if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+  else
+    # Fallback: try to find it from the current working directory
+    script_dir="$(pwd)"
+  fi
+  
+  # Look for dot_gtr in common locations
+  # First try relative to script location
+  for potential_dir in "$script_dir/../dot_gtr" "$script_dir/../../dot_gtr" "$(dirname "$script_dir")/dot_gtr"; do
+    if [[ -d "$potential_dir" ]]; then
+      source_dot_gtr_dir="$potential_dir"
+      break
+    fi
+  done
+  
+  # If not found, try to find gtr installation directory
+  if [[ -z "$source_dot_gtr_dir" ]]; then
+    local gtr_script=""
+    if command -v gtr >/dev/null 2>&1; then
+      gtr_script="$(which gtr)"
+      if [[ -L "$gtr_script" ]]; then
+        gtr_script="$(readlink "$gtr_script")"
+      fi
+      local gtr_dir="$(dirname "$gtr_script")"
+      for potential_dir in "$gtr_dir/../dot_gtr" "$gtr_dir/../../dot_gtr" "$(dirname "$gtr_dir")/dot_gtr"; do
+        if [[ -d "$potential_dir" ]]; then
+          source_dot_gtr_dir="$potential_dir"
+          break
+        fi
+      done
+    fi
+  fi
+  
+  # Final fallback: look in current directory and common development locations
+  if [[ -z "$source_dot_gtr_dir" ]]; then
+    for potential_dir in "$(pwd)/dot_gtr" "/Users/ryanwjackson/Documents/dev/worktrees/init-hooks/dot_gtr"; do
+      if [[ -d "$potential_dir" ]]; then
+        source_dot_gtr_dir="$potential_dir"
+        break
+      fi
+    done
+  fi
+  
+  if [[ -z "$source_dot_gtr_dir" || ! -d "$source_dot_gtr_dir" ]]; then
+    echo "⚠️  Could not find source dot_gtr directory, skipping dot_gtr setup"
+    return 0
+  fi
+  
+  # Copy entire dot_gtr directory structure as-is
+  local copied_files=()
+  local copied_dirs=()
+  
+  # Copy all files and directories from dot_gtr using rsync for clean copying
+  if command -v rsync >/dev/null 2>&1; then
+    # Use rsync to copy contents without the source directory itself
+    if rsync -a --exclude='.*' "$source_dot_gtr_dir/" "$global_config_dir/" 2>/dev/null; then
+      # Count copied items
+      while IFS= read -r -d '' item; do
+        local relative_path="${item#$global_config_dir/}"
+        if [[ -f "$item" ]]; then
+          copied_files+=("$relative_path")
+        elif [[ -d "$item" ]]; then
+          copied_dirs+=("$relative_path")
+        fi
+      done < <(find "$global_config_dir" -mindepth 1 -print0 2>/dev/null)
+    fi
+  else
+    # Fallback: use find with explicit exclusion of the source directory
+    while IFS= read -r -d '' item; do
+      local relative_path="${item#$source_dot_gtr_dir/}"
+      local target_path="$global_config_dir/$relative_path"
+      
+      # Skip if this is the source directory itself
+      if [[ "$relative_path" == "" ]]; then
+        continue
+      fi
+      
+      if [[ -f "$item" ]]; then
+        # Copy file
+        if [[ ! -f "$target_path" ]]; then
+          if cp "$item" "$target_path" 2>/dev/null; then
+            copied_files+=("$relative_path")
+          fi
+        fi
+      elif [[ -d "$item" ]]; then
+        # Create directory
+        if [[ ! -d "$target_path" ]]; then
+          if mkdir -p "$target_path" 2>/dev/null; then
+            copied_dirs+=("$relative_path")
+          fi
+        fi
+      fi
+    done < <(find "$source_dot_gtr_dir" -mindepth 1 -print0 2>/dev/null)
+  fi
+  
+  if [[ ${#copied_files[@]} -gt 0 || ${#copied_dirs[@]} -gt 0 ]]; then
+    echo "🔧 Copied dot_gtr files to global config:"
+    for file in "${copied_files[@]}"; do
+      echo "  - $file"
+    done
+    for dir in "${copied_dirs[@]}"; do
+      echo "  - $dir/"
+    done
+    echo "   Edit files in: $global_config_dir"
+  else
+    echo "📋 dot_gtr files already exist in global config"
+  fi
+}
+
 _gtr_copy_hooks_to_global() {
   local global_config_dir="$1"
   local hooks_dir="$global_config_dir/hooks"
@@ -812,6 +929,124 @@ _gtr_copy_hooks_to_global() {
     echo "   Edit hooks in: $hooks_dir"
   else
     echo "📋 Hooks already exist in global config"
+  fi
+}
+
+_gtr_copy_dot_gtr_to_local() {
+  local main_worktree="$1"
+  local config_dir="$2"
+  local source_dot_gtr_dir=""
+  
+  # Find the source dot_gtr directory (from the gtr installation)
+  # Try to find it relative to the current script location
+  local script_dir=""
+  if [[ -n "${BASH_SOURCE[0]}" ]]; then
+    script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+  else
+    # Fallback: try to find it from the current working directory
+    script_dir="$(pwd)"
+  fi
+  
+  # Look for dot_gtr in common locations
+  # First try relative to script location
+  for potential_dir in "$script_dir/../dot_gtr" "$script_dir/../../dot_gtr" "$(dirname "$script_dir")/dot_gtr"; do
+    if [[ -d "$potential_dir" ]]; then
+      source_dot_gtr_dir="$potential_dir"
+      break
+    fi
+  done
+  
+  # If not found, try to find gtr installation directory
+  if [[ -z "$source_dot_gtr_dir" ]]; then
+    local gtr_script=""
+    if command -v gtr >/dev/null 2>&1; then
+      gtr_script="$(which gtr)"
+      if [[ -L "$gtr_script" ]]; then
+        gtr_script="$(readlink "$gtr_script")"
+      fi
+      local gtr_dir="$(dirname "$gtr_script")"
+      for potential_dir in "$gtr_dir/../dot_gtr" "$gtr_dir/../../dot_gtr" "$(dirname "$gtr_dir")/dot_gtr"; do
+        if [[ -d "$potential_dir" ]]; then
+          source_dot_gtr_dir="$potential_dir"
+          break
+        fi
+      done
+    fi
+  fi
+  
+  # Final fallback: look in current directory and common development locations
+  if [[ -z "$source_dot_gtr_dir" ]]; then
+    for potential_dir in "$(pwd)/dot_gtr" "/Users/ryanwjackson/Documents/dev/worktrees/init-hooks/dot_gtr"; do
+      if [[ -d "$potential_dir" ]]; then
+        source_dot_gtr_dir="$potential_dir"
+        break
+      fi
+    done
+  fi
+  
+  if [[ -z "$source_dot_gtr_dir" || ! -d "$source_dot_gtr_dir" ]]; then
+    echo "⚠️  Could not find source dot_gtr directory, skipping dot_gtr setup"
+    return 0
+  fi
+  
+  # Copy entire dot_gtr directory structure as-is
+  local copied_files=()
+  local copied_dirs=()
+  
+  # Copy all files and directories from dot_gtr using rsync for clean copying
+  if command -v rsync >/dev/null 2>&1; then
+    # Use rsync to copy contents without the source directory itself
+    if rsync -a --exclude='.*' "$source_dot_gtr_dir/" "$config_dir/" 2>/dev/null; then
+      # Count copied items
+      while IFS= read -r -d '' item; do
+        local relative_path="${item#$config_dir/}"
+        if [[ -f "$item" ]]; then
+          copied_files+=("$relative_path")
+        elif [[ -d "$item" ]]; then
+          copied_dirs+=("$relative_path")
+        fi
+      done < <(find "$config_dir" -mindepth 1 -print0 2>/dev/null)
+    fi
+  else
+    # Fallback: use find with explicit exclusion of the source directory
+    while IFS= read -r -d '' item; do
+      local relative_path="${item#$source_dot_gtr_dir/}"
+      local target_path="$config_dir/$relative_path"
+      
+      # Skip if this is the source directory itself
+      if [[ "$relative_path" == "" ]]; then
+        continue
+      fi
+      
+      if [[ -f "$item" ]]; then
+        # Copy file
+        if [[ ! -f "$target_path" ]]; then
+          if cp "$item" "$target_path" 2>/dev/null; then
+            copied_files+=("$relative_path")
+          fi
+        fi
+      elif [[ -d "$item" ]]; then
+        # Create directory
+        if [[ ! -d "$target_path" ]]; then
+          if mkdir -p "$target_path" 2>/dev/null; then
+            copied_dirs+=("$relative_path")
+          fi
+        fi
+      fi
+    done < <(find "$source_dot_gtr_dir" -mindepth 1 -print0 2>/dev/null)
+  fi
+  
+  if [[ ${#copied_files[@]} -gt 0 || ${#copied_dirs[@]} -gt 0 ]]; then
+    echo "🔧 Copied dot_gtr files to local config:"
+    for file in "${copied_files[@]}"; do
+      echo "  - $file"
+    done
+    for dir in "${copied_dirs[@]}"; do
+      echo "  - $dir/"
+    done
+    echo "   Edit files in: $config_dir"
+  else
+    echo "📋 dot_gtr files already exist in local config"
   fi
 }
 

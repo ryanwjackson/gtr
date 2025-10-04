@@ -14,13 +14,14 @@
 #   0 - success
 #   non-zero - failure (worktree is already removed, but hook failed)
 
-WORKTREE_NAME="$1"
-WORKTREE_PATH="$2"
-BRANCH_NAME="$3"
-FORCE="$4"
-DRY_RUN="$5"
+# Source the gtr utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils.sh"
 
-echo "🧹 Post-remove hook: $WORKTREE_NAME"
+# Initialize gtr context
+gtr_init_context "$@"
+
+gtr_log "Post-remove hook: $GTR_WORKTREE_NAME"
 
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "🔍 [DRY RUN] Would run post-remove cleanup"

@@ -3,6 +3,138 @@
 # gtr-hooks.sh - Hook execution and management
 # Contains functions for executing hooks during worktree operations
 
+_gtr_validate_hook() {
+  local hook_name="$1"
+  local hook_dir="$2"
+  local hook_file="$hook_dir/$hook_name"
+  
+  if [[ ! -f "$hook_file" ]]; then
+    return 0  # Hook doesn't exist, skip silently
+  fi
+  
+  if [[ ! -x "$hook_file" ]]; then
+    # Check if it's a .sample file that needs to be enabled
+    if [[ "$hook_file" == *.sample ]]; then
+      echo "ℹ️  Hook $hook_name is a sample file (copy to enable)"
+      return 0
+    else
+      echo "❌ Hook $hook_name exists but is not executable"
+      echo "   Fix: chmod +x '$hook_file'"
+      return 1
+    fi
+  fi
+  
+  return 0
+}
+
+_gtr_validate_hooks_for_command() {
+  local command="$1"
+  local main_worktree="$2"
+  local worktree_name="${3:-}"
+  local worktree_path="${4:-}"
+  local branch_name="${5:-}"
+  local base_branch="${6:-}"
+  local force="${7:-false}"
+  local dry_run="${8:-false}"
+  
+  local hooks_dir
+  if ! hooks_dir="$(_gtr_find_hooks_dir "$main_worktree")"; then
+    return 0  # No hooks directory found
+  fi
+  
+  local validation_failed=false
+  local hooks_to_execute=()
+  
+  # Determine which hooks to validate based on command
+  case "$command" in
+    create)
+      hooks_to_execute=("pre-create" "post-create" "before-open" "post-open")
+      ;;
+    remove)
+      hooks_to_execute=("pre-remove" "post-remove")
+      ;;
+    prune)
+      hooks_to_execute=("pre-prune" "post-prune")
+      ;;
+    *)
+      return 0  # Unknown command, skip validation
+      ;;
+  esac
+  
+  # Validate each hook
+  for hook_name in "${hooks_to_execute[@]}"; do
+    if ! _gtr_validate_hook "$hook_name" "$hooks_dir"; then
+      validation_failed=true
+    fi
+  done
+  
+  if [[ "$validation_failed" == "true" ]]; then
+    return 1
+  fi
+  
+  return 0
+}
+
+_gtr_show_hooks_for_command() {
+  local command="$1"
+  local main_worktree="$2"
+  local worktree_name="${3:-}"
+  local worktree_path="${4:-}"
+  local branch_name="${5:-}"
+  local base_branch="${6:-}"
+  local force="${7:-false}"
+  local dry_run="${8:-false}"
+  
+  local hooks_dir
+  if ! hooks_dir="$(_gtr_find_hooks_dir "$main_worktree")"; then
+    return 0  # No hooks directory found
+  fi
+  
+  local hooks_to_execute=()
+  local hook_descriptions=()
+  
+  # Determine which hooks will be executed based on command
+  case "$command" in
+    create)
+      hooks_to_execute=("pre-create" "post-create" "before-open" "post-open")
+      hook_descriptions=("BEFORE creating worktree" "AFTER creating worktree" "BEFORE opening worktree" "AFTER opening worktree")
+      ;;
+    remove)
+      hooks_to_execute=("pre-remove" "post-remove")
+      hook_descriptions=("BEFORE removing worktree" "AFTER removing worktree")
+      ;;
+    prune)
+      hooks_to_execute=("pre-prune" "post-prune")
+      hook_descriptions=("BEFORE pruning worktrees" "AFTER pruning worktrees")
+      ;;
+    *)
+      return 0  # Unknown command, skip display
+      ;;
+  esac
+  
+  local found_hooks=()
+  local found_descriptions=()
+  
+  # Check which hooks actually exist and are executable
+  for i in "${!hooks_to_execute[@]}"; do
+    local hook_name="${hooks_to_execute[$i]}"
+    local hook_file="$hooks_dir/$hook_name"
+    
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+      found_hooks+=("$hook_name")
+      found_descriptions+=("${hook_descriptions[$i]}")
+    fi
+  done
+  
+  if [[ ${#found_hooks[@]} -gt 0 ]]; then
+    echo "🔧 Hooks that will be executed:"
+    for i in "${!found_hooks[@]}"; do
+      echo "  • ${found_hooks[$i]} - ${found_descriptions[$i]}"
+    done
+    echo ""
+  fi
+}
+
 _gtr_execute_hook() {
   local hook_name="$1"
   local hook_dir="$2"

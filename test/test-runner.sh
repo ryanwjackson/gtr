@@ -100,6 +100,7 @@ run_all_tests() {
   run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
   run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
   run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-run-hook.sh" "Run Hook Command"
 
   # Show final summary
   show_final_summary
@@ -134,6 +135,7 @@ run_action_tests() {
   run_test_suite "$SCRIPT_DIR/actions/test-stash.sh" "Stash Functionality"
   run_test_suite "$SCRIPT_DIR/actions/test-ideas.sh" "Ideas Management"
   run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
+  run_test_suite "$SCRIPT_DIR/actions/test-run-hook.sh" "Run Hook Command"
 
   show_final_summary
 }
@@ -178,6 +180,9 @@ run_specific_test() {
     generate)
       run_test_suite "$SCRIPT_DIR/actions/test-generate.sh" "Generate Command"
       ;;
+    run-hook)
+      run_test_suite "$SCRIPT_DIR/actions/test-run-hook.sh" "Run Hook Command"
+      ;;
     # Groups
     helpers)
       run_helper_tests
@@ -211,6 +216,7 @@ list_tests() {
   echo "  prune    - Prune command functionality"
   echo "  stash    - Stash functionality"
   echo "  ideas    - Ideas management functionality"
+  echo "  run-hook - Run hook command functionality"
   echo ""
   echo "Groups:"
   echo "  helpers  - Run all helper tests"
